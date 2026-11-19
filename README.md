@@ -1,6 +1,6 @@
 # ipod-things
 
-Homebrew games and releases I'm building and porting for the iPod Classic (6G / 6.5G / 7G) running custom firmware on Apple 2.0.5.
+Homebrew games, tweaks and other utilities I'm building and porting for the iPod Classic (6G / 6.5G / 7G) running custom firmware on Apple 2.0.5.
 
 ## Contents
 

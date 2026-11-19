@@ -21,3 +21,4 @@ Make sure `doodlejump.eapp`, `Manifest.plist`, and the asset files sit directly 
 
 - **Menus:** Click Wheel or **Previous / Next** to move, **Center** to select, **Menu** to go back.
 - **In game:** **Previous** moves left, **Next** moves right, **Center** shoots, **Menu** or **Play/Pause** pauses.
+
