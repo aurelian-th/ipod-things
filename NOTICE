@@ -1,0 +1,55 @@
+RevisionOS
+Copyright (C) 2026 0xAu and contributors. GPL-3.0-only.
+
+RevisionOS is a modular custom firmware distribution for the Apple iPod Classic
+(6G, 6.5G, and 7G) based on Apple firmware 2.0.5.
+
+Upstream projects and attribution:
+
+- RevolaOS (https://github.com/RevolaOS): core firmware, hook site framework,
+  extension loader, settings store, UI runtime, theme compiler, eApp SDK,
+  QEMU emulator updates, and first-party extensions. GPL-3.0-only.
+- RepriseOS (https://github.com/lgreitis/osos-lab,
+  https://github.com/lgreitis/repriseos-installer): foundational 2.0.5 boot
+  chain, reverse engineering, installer architecture, original game SDK, and
+  Classic dark palette/artwork by lgreitis, Alex Ball (alexballvideos-netizen),
+  RaduTek, Swimming33, brilliant-alien, and kayboll. GPL-3.0-only.
+- PodBox (https://github.com/anthonyfletcher/podbox, commit
+  7a89c33d0ed49c93ba49a8198e822b8adb72d0a5): iAP2 packet framing and HID
+  reassembly reference used in Car Audio (iap2.rvx). GPL-2.0-or-later; the
+  adapted Car Audio implementation is GPL-3.0-only.
+- Rockbox (https://github.com/Rockbox/rockbox): bootloader, dual-boot
+  installer, hardware drivers, USB helper, Crossfeed (Thom Johansen, Bertrik
+  Sikken, Michael Sevakis), Channels (Thom Johansen, Michael Sevakis),
+  Compressor (Jeffrey Goode), 2048 (Franklin Wei, Linus Nielsen Feltzing), and
+  Dice (Brandon Low). GPL-2.0-or-later.
+- wInd3x (https://github.com/freemyipod/wInd3x) by Serge "q3k" Bazanski:
+  BootROM DFU exploit and tooling. GPL-2.0-or-later.
+- giek2000 (https://github.com/giek2000/ipod-classic-firmware-research): iPod
+  Classic firmware research.
+- Cupertino Icons / Framework7 Icons (https://github.com/flutter/packages) by
+  Vladimir Kharlampidi: Settings and Appearance menu glyphs. MIT License
+  (see LICENSE.cupertino-icons).
+- Khronos OpenGL ES 1.1 and KHR platform headers
+  (https://github.com/KhronosGroup/OpenGL-Registry,
+  https://github.com/KhronosGroup/EGL-Registry): bundled inside eApp binaries.
+  MIT and Apache-2.0.
+- Lima Sky and Mr. Goodliving Ltd.: original creators of Doodle Jump. The
+  Doodle Jump package included here is an unofficial hobby port and is not
+  affiliated with or endorsed by Lima Sky.
+
+Apple firmware notice:
+
+Apple copyrighted firmware bytes are never distributed in this repository. The
+files under Firmware/ are non-distributive patch recipes and data applied
+locally to the user's own iPod_38.2.0.5.ipsw image.
+
+Corresponding source (GPL-3.0 Section 6):
+
+This repository publishes plug-and-play binaries, non-distributive recipes,
+and documentation. Complete corresponding source code for RevisionOS core,
+custom extensions, and bundled homebrew is available at
+https://github.com/aurelian-th/ipod and via upstream RevolaOS / RepriseOS
+repositories. A written offer to provide corresponding source code on request
+remains valid under the terms of GNU GPL v3.
+

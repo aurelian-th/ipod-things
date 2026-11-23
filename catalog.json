@@ -1,0 +1,750 @@
+{
+  "schema": 1,
+  "repo": "aurelian-th/ipod-things",
+  "branch": "main",
+  "backbone_disclaimer": "RevisionOS currently runs on the RevolaOS core and bootloader backbone. Folders and files on your iPod use /Revola/ names (such as /Revola/Firmware/revola.bin and /Revola/Extensions/) temporarily until upstream RepriseOS implements all required hooks and features.",
+  "custom_build_notice": "Use the custom RevisionOS revola.bin firmware build rather than upstream RevolaOS or RepriseOS binaries. RevisionOS-specific core hooks are required by Hold Standby Clock, Silent Remote Volume, Car Audio, and Lyrics.",
+  "whats_new": [
+    {
+      "id": "hold-standby-clock",
+      "title": "Hold Standby Clock 1.0.0",
+      "summary": "Jump straight to Apple's standby clock when engaging Hold while keeping your Backlight Timer intact.",
+      "version": "1.0.0"
+    },
+    {
+      "id": "silent-remote-volume",
+      "title": "Silent Remote Volume 1.0.0",
+      "summary": "Prevent wired headphone inline and dock remote volume buttons from waking the screen.",
+      "version": "1.0.0"
+    },
+    {
+      "id": "extension-categories",
+      "title": "Extension categories",
+      "summary": "Every .rvx extension now encodes its category (Audio, Customization, Media, Utility, Connectivity, Developer) in RVMF.",
+      "version": "1.74.0"
+    },
+    {
+      "id": "iap2",
+      "title": "Car Audio 1.0.0",
+      "summary": "USB iAP1/iAP2 switching with 44.1 kHz digital audio, artwork, and steering-wheel controls.",
+      "version": "1.0.0"
+    }
+  ],
+  "categories": [
+    {
+      "id": "audio",
+      "label": "Audio",
+      "description": "Sound processing, EQ, channels, compressor, and clicker."
+    },
+    {
+      "id": "customization",
+      "label": "Customization",
+      "description": "Themes, Dark Mode, Cover Grid, and lock-screen behavior."
+    },
+    {
+      "id": "media",
+      "label": "Media",
+      "description": "Playback queue, synced lyrics, chapters, seek, and file info."
+    },
+    {
+      "id": "utility",
+      "label": "Utility",
+      "description": "Homebrew launcher and hardware control conveniences."
+    },
+    {
+      "id": "connectivity",
+      "label": "Connectivity",
+      "description": "Car Audio iAP1/iAP2 switching and accessory auth."
+    },
+    {
+      "id": "developer",
+      "label": "Developer",
+      "description": "USB debugging and inspection tools."
+    }
+  ],
+  "firmware": {
+    "name": "RevisionOS Core",
+    "version": "1.74.0",
+    "api": "1.74",
+    "target": "classic7g",
+    "checks": 240,
+    "output_bytes": 10728704,
+    "requires_custom_build": true,
+    "files": {
+      "firmware.json": {
+        "path": "Firmware/firmware.json",
+        "bytes": 18819,
+        "sha256": "4d2257ff70c99fa9862f8ed770efae793ae3e5e076755bd1a6c1b4369bd070cb",
+        "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Firmware/firmware.json"
+      },
+      "firmware.data": {
+        "path": "Firmware/firmware.data",
+        "bytes": 82109,
+        "sha256": "ded2acd10d81c2e90a4ab2d3eaec9d40bcdd4f151f456e84088f76c5f1f4e2db",
+        "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Firmware/firmware.data"
+      },
+      "companion.json": {
+        "path": "Firmware/companion.json",
+        "bytes": 43332,
+        "sha256": "e2d45e2d5c90baeab12ad36fc69794ded7eafd6ade7f7bd05c97fbc2833b7e03",
+        "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Firmware/companion.json"
+      },
+      "companion.data": {
+        "path": "Firmware/companion.data",
+        "bytes": 4936,
+        "sha256": "aeb546f359706c155c455bd79a7ff83ed64754bce6864b9e4a929dfbe2f9ce03",
+        "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Firmware/companion.data"
+      }
+    }
+  },
+  "extensions": [
+    {
+      "id": "appearance",
+      "name": "Appearance",
+      "type": "customization",
+      "version": "0.1.0",
+      "author": "RevolaOS",
+      "stability": "alpha",
+      "api": "1.47",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "Dark Mode, Accent Color and themes that recolour the screens and replace the artwork.",
+      "changelog": "Appearance 0.1.0 built for RevisionOS API 1.47.",
+      "file": "Extensions/appearance.rvx",
+      "bytes": 125056,
+      "sha256": "417e1e0d161d89dd826edd8585fba4c073ff9cb367b5a402ebb7e66a3ae81498",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/appearance.rvx"
+    },
+    {
+      "id": "channels",
+      "name": "Channels",
+      "type": "audio",
+      "version": "0.1.0",
+      "author": "RevolaOS",
+      "stability": "beta",
+      "api": "1.58",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "Narrow or widen the stereo image, or play mono, one channel in both ears, karaoke or swapped channels.",
+      "changelog": "Channels 0.1.0 built for RevisionOS API 1.58.",
+      "file": "Extensions/channels.rvx",
+      "bytes": 7496,
+      "sha256": "bfa25b64d66512d7d201cd328a4f11dbaf7c4a473062329c6306f53de647e19e",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/channels.rvx"
+    },
+    {
+      "id": "chapter-marks",
+      "name": "Chapter Marks",
+      "type": "media",
+      "version": "0.1.0",
+      "author": "RevolaOS",
+      "stability": "beta",
+      "api": "1.44",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "Leave the chapter marks off the Now Playing bar when there are too many to tell apart.",
+      "changelog": "Chapter Marks 0.1.0 built for RevisionOS API 1.44.",
+      "file": "Extensions/chapter-marks.rvx",
+      "bytes": 548,
+      "sha256": "f763988fae4fb883f7c9d6303c7477f144d0fbe9379e9f0834f8f084a8cd69fc",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/chapter-marks.rvx"
+    },
+    {
+      "id": "chapter-menu",
+      "name": "Chapter Menu",
+      "type": "media",
+      "version": "0.1.0",
+      "author": "RevolaOS",
+      "stability": "beta",
+      "api": "1.42",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "Browse the chapters of a podcast or iTunes U episode, or of the playing track, from its context menu and jump to one.",
+      "changelog": "Chapter Menu 0.1.0 built for RevisionOS API 1.42.",
+      "file": "Extensions/chapter-menu.rvx",
+      "bytes": 2844,
+      "sha256": "5fc87c6d2b1acb515327aef61294de3e23c8c3e4536e31bbbf644ab10e8bd75d",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/chapter-menu.rvx"
+    },
+    {
+      "id": "clicker-modes",
+      "name": "Clicker Modes",
+      "type": "audio",
+      "version": "0.1.0",
+      "author": "RevolaOS",
+      "stability": "beta",
+      "api": "1.28",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "Choose where the click wheel sound plays: the iPod's speaker, headphones, both or off.",
+      "changelog": "Clicker Modes 0.1.0 built for RevisionOS API 1.28.",
+      "file": "Extensions/clicker-modes.rvx",
+      "bytes": 996,
+      "sha256": "2297f9e609ee9b742b123afcb93eba1013e9a3705b6002b25c387ec77c67bcbb",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/clicker-modes.rvx"
+    },
+    {
+      "id": "compressor",
+      "name": "Compressor",
+      "type": "audio",
+      "version": "0.1.0",
+      "author": "RevolaOS",
+      "stability": "beta",
+      "api": "1.66",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "Turn loud passages down so quiet ones can be heard without touching the volume.",
+      "changelog": "Compressor 0.1.0 built for RevisionOS API 1.66.",
+      "file": "Extensions/compressor.rvx",
+      "bytes": 10692,
+      "sha256": "8ec8ca963dc4c1f197ff36fd23b6cbd5404866fa0639166e98d187d6049cda71",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/compressor.rvx"
+    },
+    {
+      "id": "cover-grid",
+      "name": "Cover Grid",
+      "type": "customization",
+      "version": "0.1.0",
+      "author": "RevolaOS",
+      "stability": "beta",
+      "api": "1.59",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "Browse albums as a grid of covers next to Cover Flow, in Music and on the main menu.",
+      "changelog": "Cover Grid 0.1.0 built for RevisionOS API 1.59.",
+      "file": "Extensions/cover-grid.rvx",
+      "bytes": 7528,
+      "sha256": "98d86408471431db58b34ffc950f5da6b5e885c651f99187c92ec9329cf6d019",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/cover-grid.rvx"
+    },
+    {
+      "id": "crossfeed",
+      "name": "Crossfeed",
+      "type": "audio",
+      "version": "0.1.0",
+      "author": "RevolaOS",
+      "stability": "beta",
+      "api": "1.66",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "Blends a little of each channel into the other so hard-panned stereo is easier on headphones. A simple mode or a custom filter.",
+      "changelog": "Crossfeed 0.1.0 built for RevisionOS API 1.66.",
+      "file": "Extensions/crossfeed.rvx",
+      "bytes": 16324,
+      "sha256": "65b82cd922bd831ecf358891c05c22a1caf08692921b0be8694c807ba1cf194b",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/crossfeed.rvx"
+    },
+    {
+      "id": "equalizer",
+      "name": "Equalizer",
+      "type": "audio",
+      "version": "0.1.0",
+      "author": "RevolaOS",
+      "stability": "beta",
+      "api": "1.66",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "Stop the EQ presets from distorting, and add a Custom preset with five bands you shape yourself.",
+      "changelog": "Equalizer 0.1.0 built for RevisionOS API 1.66.",
+      "file": "Extensions/equalizer.rvx",
+      "bytes": 19288,
+      "sha256": "495afe8beefebeabe5f34bd00727df60e10efe824530f6e73c201d08f536c424",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/equalizer.rvx"
+    },
+    {
+      "id": "eu-volume-limit",
+      "name": "EU Volume Limit",
+      "type": "audio",
+      "version": "0.1.0",
+      "author": "RevolaOS",
+      "stability": "beta",
+      "api": "1.30",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "Turns off the EU volume cap: 15% more volume with the limit switch off, no high-volume warning and no automatic lowering of the volume.",
+      "changelog": "EU Volume Limit 0.1.0 built for RevisionOS API 1.30.",
+      "file": "Extensions/eu-volume-limit.rvx",
+      "bytes": 476,
+      "sha256": "d61babbdac686e635c24b5240a6b4eec73c6144d7b317b11a8ad88200d4f22b4",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/eu-volume-limit.rvx"
+    },
+    {
+      "id": "fast-seek",
+      "name": "Fast Seek",
+      "type": "media",
+      "version": "0.1.0",
+      "author": "RevolaOS",
+      "stability": "beta",
+      "api": "1.43",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "Seeking in long AAC and Apple Lossless files (audiobooks, podcasts) jumps straight to the target instead of stepping through every frame on the way.",
+      "changelog": "Fast Seek 0.1.0 built for RevisionOS API 1.43.",
+      "file": "Extensions/fast-seek.rvx",
+      "bytes": 1352,
+      "sha256": "3d22a4ee14c0bdd19d12b6663c25268f146b1dcc23a546e72f435dff89e7f1c3",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/fast-seek.rvx"
+    },
+    {
+      "id": "file-info",
+      "name": "File Info",
+      "type": "media",
+      "version": "0.1.0",
+      "author": "RevolaOS",
+      "stability": "beta",
+      "api": "1.42",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "Show a song, episode, audiobook or video's tags and file properties from its context menu.",
+      "changelog": "File Info 0.1.0 built for RevisionOS API 1.42.",
+      "file": "Extensions/file-info.rvx",
+      "bytes": 4788,
+      "sha256": "fcf0e4bcd10cd0704691a8bae49d8a997f51c81fc7bf944b978a0e9ad099a2c1",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/file-info.rvx"
+    },
+    {
+      "id": "hold-standby-clock",
+      "name": "Hold Standby Clock",
+      "type": "customization",
+      "version": "1.0.0",
+      "author": "0xAu",
+      "stability": "beta",
+      "api": "1.74",
+      "default_enabled": false,
+      "requires_custom_core": true,
+      "description": "Jumps straight to Apple's standby clock when Hold is locked while keeping the Backlight Timer; requires RevisionOS revola.bin.",
+      "changelog": "Hold Standby Clock 1.0.0 built for RevisionOS API 1.74.",
+      "file": "Extensions/hold-standby-clock.rvx",
+      "bytes": 716,
+      "sha256": "6637c06b481d07c6bb50c7fb5e326a5dc2af22a6e05253575d4249e6ea031fd8",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/hold-standby-clock.rvx"
+    },
+    {
+      "id": "homebrew",
+      "name": "Homebrew",
+      "type": "utility",
+      "version": "0.1.0",
+      "author": "RevolaOS",
+      "stability": "beta",
+      "api": "1.54",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "Apps and games from /Revola/Apps and /Revola/Games under Extras, started without an Apple signature.",
+      "changelog": "Homebrew 0.1.0 built for RevisionOS API 1.54.",
+      "file": "Extensions/homebrew.rvx",
+      "bytes": 14300,
+      "sha256": "704a30ffefa02883439779bfbcff05d3f550fb1e9fc079ae1e9908c16f4a053d",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/homebrew.rvx"
+    },
+    {
+      "id": "iap-auth-bypass",
+      "name": "iAP Auth Bypass",
+      "type": "connectivity",
+      "version": "0.1.0",
+      "author": "0xAu",
+      "stability": "beta",
+      "api": "1.29",
+      "default_enabled": true,
+      "requires_custom_core": false,
+      "description": "Let accessories use authentication-gated iAP commands without an Apple authentication chip.",
+      "changelog": "iAP Auth Bypass 0.1.0 built for RevisionOS API 1.29.",
+      "file": "Extensions/iap-auth-bypass.rvx",
+      "bytes": 404,
+      "sha256": "e1d7de92f325926eedbf45de0678ab31b8520637aefe6e7437faf0b974f51182",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/iap-auth-bypass.rvx"
+    },
+    {
+      "id": "iap2",
+      "name": "Car Audio",
+      "type": "connectivity",
+      "version": "1.0.0",
+      "author": "0xAu",
+      "stability": "stable",
+      "api": "1.74",
+      "default_enabled": true,
+      "requires_custom_core": true,
+      "description": "Switch USB car protocol between iAP1 and iAP2 with 44.1 kHz digital audio, artwork, library sync, and steering-wheel controls.",
+      "changelog": "Car Audio 1.0.0 built for RevisionOS API 1.74.",
+      "file": "Extensions/iap2.rvx",
+      "bytes": 46088,
+      "sha256": "456e4e41ee0781f028b0f25af6f071a0a4a85571084bce8b5b48999018b33fec",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/iap2.rvx"
+    },
+    {
+      "id": "long-audio-fix",
+      "name": "Long Audio Fix",
+      "type": "media",
+      "version": "0.1.0",
+      "author": "RevolaOS",
+      "stability": "beta",
+      "api": "1.43",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "AAC and Apple Lossless files longer than 13.5 hours (12.4 hours at 48 kHz) play to the end instead of stopping partway.",
+      "changelog": "Long Audio Fix 0.1.0 built for RevisionOS API 1.43.",
+      "file": "Extensions/long-audio-fix.rvx",
+      "bytes": 432,
+      "sha256": "194bcb7fae77b4d630828eb0c0c4aa08bbaa3cc54c151678d88d4914d6bd52a4",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/long-audio-fix.rvx"
+    },
+    {
+      "id": "lyrics",
+      "name": "Lyrics",
+      "type": "media",
+      "version": "0.2.0",
+      "author": "0xAu",
+      "stability": "beta",
+      "api": "1.73",
+      "default_enabled": true,
+      "requires_custom_core": true,
+      "description": "Synced and unsynced .lrc lyrics viewer in Song and Now Playing context menus with Click Wheel scrub and snap-back.",
+      "changelog": "Lyrics 0.2.0 built for RevisionOS API 1.73.",
+      "file": "Extensions/lyrics.rvx",
+      "bytes": 4968,
+      "sha256": "5ece2cf85fc57173c563f7d08b3f74b3234ac35bb280ad7f8174362a5fc0794f",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/lyrics.rvx"
+    },
+    {
+      "id": "playback-queue",
+      "name": "Playback Queue",
+      "type": "media",
+      "version": "0.1.0",
+      "author": "0xAu",
+      "stability": "beta",
+      "api": "1.59",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "Queue songs, albums, artists or podcast episodes with Play Next or Play Last. View and edit queued items at any time.",
+      "changelog": "Playback Queue 0.1.0 built for RevisionOS API 1.59.",
+      "file": "Extensions/playback-queue.rvx",
+      "bytes": 5760,
+      "sha256": "a625924614a5d621bc624c1f1fd0c4b61ffe5f79e09ffc5a4566485b21c98fcb",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/playback-queue.rvx"
+    },
+    {
+      "id": "progress-indicator",
+      "name": "Progress Indicator",
+      "type": "media",
+      "version": "0.1.0",
+      "author": "RevolaOS",
+      "stability": "beta",
+      "api": "1.42",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "Show half-filled status circles for partially played podcasts and iTunes U items.",
+      "changelog": "Progress Indicator 0.1.0 built for RevisionOS API 1.42.",
+      "file": "Extensions/progress-indicator.rvx",
+      "bytes": 2048,
+      "sha256": "c925a28b190b3e37203b2102ee8b3a5cff314b068bebb1a24a20c1c597f99b8b",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/progress-indicator.rvx"
+    },
+    {
+      "id": "silent-remote-volume",
+      "name": "Silent Remote Volume",
+      "type": "utility",
+      "version": "1.0.0",
+      "author": "0xAu",
+      "stability": "beta",
+      "api": "1.74",
+      "default_enabled": false,
+      "requires_custom_core": true,
+      "description": "Prevents wired headphone inline and dock remote volume buttons from waking the screen or resetting the backlight timer.",
+      "changelog": "Silent Remote Volume 1.0.0 built for RevisionOS API 1.74.",
+      "file": "Extensions/silent-remote-volume.rvx",
+      "bytes": 496,
+      "sha256": "151a6b3639ddb8e9402aa1b94bc8c4cde8d990f2f9c1b30b2c897d67be657400",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/silent-remote-volume.rvx"
+    },
+    {
+      "id": "usb-debug",
+      "name": "USB Debug",
+      "type": "developer",
+      "version": "0.1.0",
+      "author": "RevolaOS",
+      "stability": "beta",
+      "api": "1.28",
+      "default_enabled": false,
+      "requires_custom_core": false,
+      "description": "Developer tool. Lets a computer inspect and control the iPod over USB while music plays. While on, the iPod cannot sync; turn it off first.",
+      "changelog": "USB Debug 0.1.0 built for RevisionOS API 1.28.",
+      "file": "Extensions/usb-debug.rvx",
+      "bytes": 6400,
+      "sha256": "830370305f050d4b15141ba6cc70612206b4d7e0f2a3ad32bca6ec0edae24710",
+      "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/usb-debug.rvx"
+    }
+  ],
+  "games": [
+    {
+      "id": "2048",
+      "folder": "2048",
+      "kind": "game",
+      "name": "2048",
+      "version": "1.0.0",
+      "author": "Rockbox / RevolaOS",
+      "description": "4x4 sliding tile puzzle with Click Wheel quadrant controls, one-move undo, and saved board state.",
+      "changelog": "Initial RevisionOS package with saved state and high scores.",
+      "total_bytes": 109146,
+      "files": [
+        {
+          "name": "2048.eapp",
+          "path": "Games/2048/2048.eapp",
+          "bytes": 101492,
+          "sha256": "39b97d2448059971f7c329327a9f5d43058ffffb3343f274a236b41330762ec5",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/2048/2048.eapp"
+        },
+        {
+          "name": "2048.raw.lcd5",
+          "path": "Games/2048/2048.raw.lcd5",
+          "bytes": 6176,
+          "sha256": "9bea758288a12cf4dd3ada2f8e3f03e58ca656578909ebe15773c35f8b33a0de",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/2048/2048.raw.lcd5"
+        },
+        {
+          "name": "Manifest.plist",
+          "path": "Games/2048/Manifest.plist",
+          "bytes": 1478,
+          "sha256": "0fb3d79acd3d922371455684012c38dc92c2cf29b5cdd93191885371c38ba0dc",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/2048/Manifest.plist"
+        }
+      ]
+    },
+    {
+      "id": "doodlejump",
+      "folder": "doodlejump",
+      "kind": "game",
+      "name": "Doodle Jump",
+      "version": "1.3.0",
+      "author": "0xAu",
+      "description": "Full-screen 320x240 Doodle Jump port with sound effects, saved settings, and Classic / Full high scores.",
+      "changelog": "Includes full asset pack, Classic and Full difficulty modes, and saved high scores.",
+      "total_bytes": 1833063,
+      "files": [
+        {
+          "name": "Doodle Jump.raw.lcd5",
+          "path": "Games/doodlejump/Doodle Jump.raw.lcd5",
+          "bytes": 6176,
+          "sha256": "52a40724b5fd9a71229f49c0e264290d28dcd85a82a1319a12bc96f19529c686",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/Doodle Jump.raw.lcd5"
+        },
+        {
+          "name": "Manifest.plist",
+          "path": "Games/doodlejump/Manifest.plist",
+          "bytes": 5711,
+          "sha256": "b8a704f16362efff29b860073f62cab3608f242378e56202dd27e77571c0eff2",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/Manifest.plist"
+        },
+        {
+          "name": "b0",
+          "path": "Games/doodlejump/b0",
+          "bytes": 62,
+          "sha256": "6ce0ce71a854e792eeca23b847e836dd41a1fdc7c9e2161778bb0cf125bf9ca1",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/b0"
+        },
+        {
+          "name": "b1",
+          "path": "Games/doodlejump/b1",
+          "bytes": 1647,
+          "sha256": "791fad77fd81c393f35e43be2c559c50b9c9c296b228a0664c11adef39920f8d",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/b1"
+        },
+        {
+          "name": "doodlejump.eapp",
+          "path": "Games/doodlejump/doodlejump.eapp",
+          "bytes": 48240,
+          "sha256": "42339e3b6678c027c2cf9792e353d387860fc47b4e14c6f675171fce561863ac",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/doodlejump.eapp"
+        },
+        {
+          "name": "g0",
+          "path": "Games/doodlejump/g0",
+          "bytes": 594265,
+          "sha256": "2eb932378e78d76b6c0ed471d9c363f842b3cf5ae98d304868c3e797b65abb82",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/g0"
+        },
+        {
+          "name": "g1",
+          "path": "Games/doodlejump/g1",
+          "bytes": 161022,
+          "sha256": "5d088fb1b5bbdaddb680f5db0557a059a8bf90fa67b5beb8d4112834a7506f0c",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/g1"
+        },
+        {
+          "name": "g2",
+          "path": "Games/doodlejump/g2",
+          "bytes": 5058,
+          "sha256": "fe49320ed44eb9ae18da346099056b8d55aa406151a8818f67c5cd086b54fcd8",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/g2"
+        },
+        {
+          "name": "g3",
+          "path": "Games/doodlejump/g3",
+          "bytes": 373858,
+          "sha256": "99414162ce8576f1070299eb95a62bdf681b40bf620ad3fc7954e3009c535d21",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/g3"
+        },
+        {
+          "name": "i",
+          "path": "Games/doodlejump/i",
+          "bytes": 12360,
+          "sha256": "26a360d371da549a5feeee7e40f6c343b0e3861974378744922172a6c2896210",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/i"
+        },
+        {
+          "name": "l",
+          "path": "Games/doodlejump/l",
+          "bytes": 2182,
+          "sha256": "02ab367c299cb1831368c2b578bbdfb3f9df0b43b55cb53978a991e1f331f401",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/l"
+        },
+        {
+          "name": "p",
+          "path": "Games/doodlejump/p",
+          "bytes": 826,
+          "sha256": "9e0a2174b0efa25e351534959f8c818464a03acb4ff54ff3a501e65cee29d4dd",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/p"
+        },
+        {
+          "name": "s00.wav",
+          "path": "Games/doodlejump/s00.wav",
+          "bytes": 2142,
+          "sha256": "cef1ef807891e5620785945a184d0763d13f2f9e3434ca5a499c9864e9b9d23f",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/s00.wav"
+        },
+        {
+          "name": "s01.wav",
+          "path": "Games/doodlejump/s01.wav",
+          "bytes": 12478,
+          "sha256": "e15d92f42d6d0e24a9b0644b94c5aea5fdc80268b57d9e1afa358c559391a963",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/s01.wav"
+        },
+        {
+          "name": "s02.wav",
+          "path": "Games/doodlejump/s02.wav",
+          "bytes": 9310,
+          "sha256": "adb386a0e3695abcf75af41067f80a4cf07ca54c804b49d240fd255bb54cfc93",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/s02.wav"
+        },
+        {
+          "name": "s03.wav",
+          "path": "Games/doodlejump/s03.wav",
+          "bytes": 31614,
+          "sha256": "1e984eca5bcdb4cd03ce1cf0d61ddd5f4a43e0a665ec395b37427f94c65364d4",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/s03.wav"
+        },
+        {
+          "name": "s04.wav",
+          "path": "Games/doodlejump/s04.wav",
+          "bytes": 68412,
+          "sha256": "06212f6f21afe0771b02dbaaf0dfb296008e3ecc599460b882b7619484cf36a0",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/s04.wav"
+        },
+        {
+          "name": "s05.wav",
+          "path": "Games/doodlejump/s05.wav",
+          "bytes": 24386,
+          "sha256": "f159975e5080f1d870fb1bcfa26ae9ab38b23a736e0ded664bea38330de4dda8",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/s05.wav"
+        },
+        {
+          "name": "s06.wav",
+          "path": "Games/doodlejump/s06.wav",
+          "bytes": 22838,
+          "sha256": "8b338c5c26f2c1c8b3f8fd0458831cdb6599e9ca47e654c0a0bbd491e6430842",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/s06.wav"
+        },
+        {
+          "name": "s07.wav",
+          "path": "Games/doodlejump/s07.wav",
+          "bytes": 34576,
+          "sha256": "780ab28ff136e10d498f0aa2925313fc01b4f726b8db09512ffc339cfed2b9e6",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/s07.wav"
+        },
+        {
+          "name": "s08.wav",
+          "path": "Games/doodlejump/s08.wav",
+          "bytes": 155390,
+          "sha256": "70e24737a30a938f969ba2d8c7e31b1dd3f6182b652d2cc646886b0facf1c72d",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/s08.wav"
+        },
+        {
+          "name": "s09.wav",
+          "path": "Games/doodlejump/s09.wav",
+          "bytes": 74178,
+          "sha256": "1a6bd22d45e49f5faaa0a690eadb71921a9b85317420b3372e1d672061a96453",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/s09.wav"
+        },
+        {
+          "name": "s10.wav",
+          "path": "Games/doodlejump/s10.wav",
+          "bytes": 18892,
+          "sha256": "388473314d1761d1b174c6a6178f0400349674de505a9da4c250516ddb4b730a",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/s10.wav"
+        },
+        {
+          "name": "s11.wav",
+          "path": "Games/doodlejump/s11.wav",
+          "bytes": 45878,
+          "sha256": "12aa5ee9034245466d92fee26de35c5c71d4e9fb912d0dd75d5ee19464026908",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/s11.wav"
+        },
+        {
+          "name": "s12.wav",
+          "path": "Games/doodlejump/s12.wav",
+          "bytes": 28648,
+          "sha256": "ccceaae11fdba7818756a345bd1e8b65c382dd925842916c3709709618e7d961",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/s12.wav"
+        },
+        {
+          "name": "s13.wav",
+          "path": "Games/doodlejump/s13.wav",
+          "bytes": 84908,
+          "sha256": "7bfa2c64eb14cca784ed7aaaa2c0797b7176a0ca034d2e26087c45cfe114e4d7",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/s13.wav"
+        },
+        {
+          "name": "s14.wav",
+          "path": "Games/doodlejump/s14.wav",
+          "bytes": 8006,
+          "sha256": "6334cb56eba7b488e96c4a15a78408840177af823d05fe072d4344fe2c2ec42e",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/s14.wav"
+        }
+      ]
+    }
+  ],
+  "apps": [
+    {
+      "id": "dice",
+      "folder": "dice",
+      "kind": "app",
+      "name": "Dice",
+      "version": "0.2.0",
+      "author": "Rockbox / RevolaOS",
+      "description": "Rolls up to 12 polyhedral dice (d3 to d100) rendered in OpenGL ES.",
+      "changelog": "Initial RevisionOS OpenGL ES utility build.",
+      "total_bytes": 71273,
+      "files": [
+        {
+          "name": "Dice.raw.lcd5",
+          "path": "Apps/dice/Dice.raw.lcd5",
+          "bytes": 6176,
+          "sha256": "722c0b83d4c44221bc56c6d582fc495c2f1fb809ce1b6e73aff3d4c8acc34a44",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Apps/dice/Dice.raw.lcd5"
+        },
+        {
+          "name": "Manifest.plist",
+          "path": "Apps/dice/Manifest.plist",
+          "bytes": 1477,
+          "sha256": "33577616a9aaa7001cd8f3483d93cd140c10a2fb2ee66fb592730de5f0d004aa",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Apps/dice/Manifest.plist"
+        },
+        {
+          "name": "dice.eapp",
+          "path": "Apps/dice/dice.eapp",
+          "bytes": 63620,
+          "sha256": "b0423cbb2194d561957310d1899dd229e7127b5e51d1b2a340ca894a2932ed95",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Apps/dice/dice.eapp"
+        }
+      ]
+    }
+  ]
+}

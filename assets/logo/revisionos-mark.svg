@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <mask id="dial-r-cut">
+      <rect width="256" height="256" fill="black"/>
+      <circle cx="132" cy="100" r="76" fill="white"/>
+      <rect x="56" y="100" width="34" height="128" fill="white"/>
+      <polygon points="130,166 165,150 210,228 168,228" fill="white"/>
+      <circle cx="132" cy="100" r="42" fill="black"/>
+      <rect x="56" y="100" width="34" height="128" fill="white"/>
+    </mask>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="#11151c" stroke="#2c3646" stroke-width="4"/>
+  <g transform="translate(128,128) scale(0.74) translate(-133,-126)">
+    <rect width="256" height="256" fill="#f0f4fa" mask="url(#dial-r-cut)"/>
+    <circle cx="132" cy="100" r="20" fill="#1479d5"/>
+  </g>
+</svg>
