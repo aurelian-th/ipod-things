@@ -349,8 +349,8 @@
       "description": "Let accessories use authentication-gated iAP commands without an Apple authentication chip.",
       "changelog": "iAP Auth Bypass 0.1.0 built for RevisionOS API 1.29.",
       "file": "Extensions/iap-auth-bypass.rvx",
-      "bytes": 404,
-      "sha256": "e1d7de92f325926eedbf45de0678ab31b8520637aefe6e7437faf0b974f51182",
+      "bytes": 384,
+      "sha256": "7e1ec66823550a9c14babd6d55af4216bddf9608a0bad55d2b94d03740cf4fd7",
       "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/iap-auth-bypass.rvx"
     },
     {
@@ -400,8 +400,8 @@
       "description": "Synced and unsynced .lrc lyrics viewer in Song and Now Playing context menus with Click Wheel scrub and snap-back.",
       "changelog": "Lyrics 0.2.0 built for RevisionOS API 1.73.",
       "file": "Extensions/lyrics.rvx",
-      "bytes": 4968,
-      "sha256": "5ece2cf85fc57173c563f7d08b3f74b3234ac35bb280ad7f8174362a5fc0794f",
+      "bytes": 4932,
+      "sha256": "4ecd25c8289135895484da8bc244783a9d5d2d14d675a72c1405df198a5388f2",
       "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/lyrics.rvx"
     },
     {
@@ -417,8 +417,8 @@
       "description": "Queue songs, albums, artists or podcast episodes with Play Next or Play Last. View and edit queued items at any time.",
       "changelog": "Playback Queue 0.1.0 built for RevisionOS API 1.59.",
       "file": "Extensions/playback-queue.rvx",
-      "bytes": 5760,
-      "sha256": "a625924614a5d621bc624c1f1fd0c4b61ffe5f79e09ffc5a4566485b21c98fcb",
+      "bytes": 5732,
+      "sha256": "9de91fef6e33c8e78f06f1f26cb1800827ca669779361e9f54d622ed77239314",
       "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/playback-queue.rvx"
     },
     {
