@@ -4,6 +4,8 @@ use std::time::Duration;
 #[derive(Deserialize)]
 struct Release {
     draft: bool,
+    #[serde(default)]
+    tag_name: Option<String>,
     published_at: Option<String>,
     assets: Vec<ReleaseAsset>,
 }
@@ -14,10 +16,27 @@ struct ReleaseAsset {
     browser_download_url: String,
 }
 
+fn is_firmware_release(release: &Release) -> bool {
+    if release.draft || release.published_at.is_none() {
+        return false;
+    }
+    if release
+        .tag_name
+        .as_deref()
+        .is_some_and(|tag| tag.starts_with("sdk/"))
+    {
+        return false;
+    }
+    release
+        .assets
+        .iter()
+        .any(|asset| asset.name.ends_with("manifest.json"))
+}
+
 fn newest_manifest(releases: Vec<Release>, target: &str) -> Result<String, String> {
     let release = releases
         .into_iter()
-        .filter(|release| !release.draft && release.published_at.is_some())
+        .filter(is_firmware_release)
         .max_by(|a, b| a.published_at.cmp(&b.published_at))
         .ok_or(
             "No RepriseOS release has been published yet. Choose a local package to continue.",
@@ -105,5 +124,34 @@ mod tests {
         ]))
         .unwrap();
         assert!(newest_manifest(releases, "classic").is_err());
+    }
+
+    #[test]
+    fn skips_non_firmware_sdk_releases() {
+        let releases = serde_json::from_value(json!([
+            {
+                "draft": false,
+                "tag_name": "v0.3.1",
+                "published_at": "2026-11-03T23:58:52Z",
+                "assets": [{
+                    "name": "classic-manifest.json",
+                    "browser_download_url": "https://github.com/lgreitis/osos-lab/releases/download/v0.3.1/classic-manifest.json"
+                }]
+            },
+            {
+                "draft": false,
+                "tag_name": "sdk/v1.82.0",
+                "published_at": "2026-11-24T18:09:07Z",
+                "assets": [{
+                    "name": "repriseos-rvx-sdk-1.82.0.tar.gz",
+                    "browser_download_url": "https://github.com/lgreitis/osos-lab/releases/download/sdk%2Fv1.82.0/repriseos-rvx-sdk-1.82.0.tar.gz"
+                }]
+            }
+        ]))
+        .unwrap();
+        assert_eq!(
+            newest_manifest(releases, "classic").unwrap(),
+            "https://github.com/lgreitis/osos-lab/releases/download/v0.3.1/classic-manifest.json"
+        );
     }
 }

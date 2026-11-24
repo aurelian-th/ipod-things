@@ -19,7 +19,8 @@ pub(super) fn inspect_storage(
 ) -> Result<Session> {
     job.stage("storage", "Checking storage")?;
     let required = assembly::disk_bytes(bundle)?
-        .checked_add(crate::theme::disk_bytes(bundle)?)
+        .checked_mul(2)
+        .and_then(|total| total.checked_add(crate::theme::disk_bytes(bundle)?))
         .and_then(|total| total.checked_add(extra_bytes))
         .ok_or("Package disk size overflow")?;
     let directory = job.directory.clone();
@@ -49,16 +50,18 @@ pub(super) fn install(
     action: assembly::BootloaderAction,
     job: &mut Job<'_>,
 ) -> Result<InstallOutcome> {
-    let mut files: Vec<(&'static str, String, String, &[u8])> = Vec::new();
+    let mut files: Vec<(&'static str, String, String, String, &[u8])> = Vec::new();
     if let Some(themes) = themes {
         files.push((
             "uploadDefaultTheme",
+            "uploadDefaultTheme.json".into(),
             "stock artwork".into(),
             "/themes/default/theme.bin".into(),
             &themes.default,
         ));
         files.push((
             "uploadDarkTheme",
+            "uploadDarkTheme.json".into(),
             "Dark Mode artwork".into(),
             "/themes/dark/theme.bin".into(),
             &themes.dark,
@@ -66,17 +69,33 @@ pub(super) fn install(
     }
     files.push((
         "uploadLoader",
+        "uploadLoader.json".into(),
         "companion loader".into(),
         "/Revola/Firmware/loader.bin".into(),
         &artifacts.companion,
     ));
     files.push((
+        "uploadLoader",
+        "uploadLoader-root.json".into(),
+        "boot companion loader".into(),
+        "/cfw-loader.bin".into(),
+        &artifacts.companion,
+    ));
+    files.push((
         "uploadOsos",
+        "uploadOsos.json".into(),
         "RevisionOS core".into(),
         "/Revola/Firmware/revola.bin".into(),
         &artifacts.osos,
     ));
-    for extra in extras {
+    files.push((
+        "uploadOsos",
+        "uploadOsos-root.json".into(),
+        "boot RevisionOS core".into(),
+        "/osos-cfw.bin".into(),
+        &artifacts.osos,
+    ));
+    for (extra_idx, extra) in extras.iter().enumerate() {
         let name = extra
             .destination
             .rsplit('/')
@@ -85,12 +104,13 @@ pub(super) fn install(
             .to_string();
         files.push((
             "uploadContent",
+            format!("uploadContent-{extra_idx}.json"),
             name,
             extra.destination.clone(),
             &extra.bytes,
         ));
     }
-    for (idx, (stage, name, destination, bytes)) in files.into_iter().enumerate() {
+    for (stage, report_name, name, destination, bytes) in files {
         job.stage(stage, &format!("Preparing {name}"))?;
         let log_job = std::cell::RefCell::new(&mut *job);
         let uploaded = session.upload_with_log(
@@ -122,11 +142,6 @@ pub(super) fn install(
             |detail| log_job.borrow_mut().log(detail),
         )?;
         session = uploaded.session;
-        let report_name = if stage == "uploadContent" {
-            format!("{stage}-{idx}.json")
-        } else {
-            format!("{stage}.json")
-        };
         job.save_json(&report_name, &uploaded.report)?;
     }
     if action == assembly::BootloaderAction::Keep {
