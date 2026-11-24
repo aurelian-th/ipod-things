@@ -4,51 +4,42 @@ RevisionOS runs on the iPod Classic 6G, 6.5G, and 7G with FAT32 storage and Appl
 
 ## Requirements
 
-- iPod Classic 6G, 6.5G, or 7G formatted as FAT32 (Windows/macOS standard iPod restore, not HFS+)
+- iPod Classic 6G, 6.5G, or 7G formatted as **FAT32** (Windows-formatted iPod; HFS+ is not supported)
 - Direct 30-pin USB cable (avoid USB hubs during DFU flashing)
 - Your own copy of Apple's `iPod_38.2.0.5.ipsw`
 - A backup of your music library and iPod data
 
-RevisionOS currently uses the `/Revola/` folder hierarchy on the iPod FAT32 volume so existing bootloaders and `.rvx` extensions remain drop-in compatible.
-
-> **Use this RevisionOS firmware build (not upstream RevolaOS or RepriseOS):** Whenever you install RevisionOS extensions that rely on RevisionOS-specific core hook sites (such as `iap2.rvx`, `lyrics.rvx`, `playback-queue.rvx`, `hold-standby-clock.rvx`, and `silent-remote-volume.rvx`), you must assemble and install the updated `revola.bin` from this repo's `Firmware/` recipe. Upstream RevolaOS `revola.bin` builds do not include these hook sites yet, and RepriseOS `osos-cfw.bin` does not support `.rvx` core hook sites at all.
-
-> **Do I update `/osos-cfw.bin` on the drive root?** Only if your iPod still uses the **RepriseOS NOR bootloader** (Path 2 below), because that bootloader reads `/osos-cfw.bin` from the root while the core reads `/Revola/Firmware/revola.bin`. If you installed the **RevolaOS NOR bootloader** (Path 1 or Path 3), it boots `/Revola/Firmware/revola.bin` directly and you do not need `/osos-cfw.bin` on the root.
+RevisionOS currently uses the `/Revola/` folder layout on the iPod FAT32 volume (`/Revola/Firmware/revola.bin`, `/Revola/Extensions/`, `/Revola/Games/`, `/Revola/Apps/`, `/Revola/Themes/`) so existing bootloaders and `.rvx` extensions remain drop-in compatible.
 
 ---
 
-## Path 1: Migrating from RevolaOS to RevisionOS (fastest)
+## Option 1: Fresh install with RevisionOS Installer (recommended)
 
-If your iPod already boots RevolaOS:
-
-1. Connect the iPod in USB disk mode and back up your existing `/Revola/Firmware/revola.bin` and `/Revola/Extensions/`.
-2. Assemble `revola.bin` locally from `Firmware/firmware.json` and `Firmware/firmware.data` using `iPod_38.2.0.5.ipsw` (see [Firmware/README.md](../Firmware/README.md)).
-3. Copy the newly assembled `revola.bin` over `/Revola/Firmware/revola.bin`. Your existing `loader.bin` and NOR bootloader stay unchanged.
-4. Copy any `.rvx` extensions you want from `Extensions/` into `/Revola/Extensions/`.
-5. Copy any games or apps from `Games/` and `Apps/` into `/Revola/Games/` and `/Revola/Apps/`.
+1. Download **RevisionOS Installer** for macOS (Universal), Windows, or Linux from [GitHub Releases](https://github.com/aurelian-th/ipod-things/releases).
+2. Open the installer and choose your `iPod_38.2.0.5.ipsw` file.
+3. Select the extensions, games, and apps you want to bundle (or start with the recommended preset).
+4. Put your iPod into **DFU mode**: unlock the Hold switch, then hold **Menu + Select (Center)** for about 12 seconds through the Apple logo until the screen goes completely black with the backlight off.
+5. Follow the on-screen DFU steps. The installer automatically backs up your NOR flash first, assembles `revola.bin` and `loader.bin` locally from your IPSW, and installs RevisionOS onto your iPod.
 6. Safely eject and reboot normally.
 
 ---
 
-## Path 2: Migrating from RepriseOS without touching NOR flash
+## Option 2: Migrating from RepriseOS or RevolaOS
 
-If your iPod already has the RepriseOS NOR bootloader installed (booting `/osos-cfw.bin` and `/cfw-loader.bin` from the drive root), it uses the same staging layout and entry ABI:
-
-1. Connect the iPod in USB disk mode and back up `/osos-cfw.bin` and `/cfw-loader.bin` from the root of the drive.
-2. Assemble `revola.bin` locally from `Firmware/firmware.json` and `Firmware/firmware.data` (see [Firmware/README.md](../Firmware/README.md)).
-   - Keep your existing personalized `/cfw-loader.bin`, or assemble a fresh `loader.bin` from `Firmware/companion.json` and `Firmware/companion.data` using your device NOR backup.
-3. Copy the assembled `revola.bin` to the root of the drive as `/osos-cfw.bin` AND into `/Revola/Firmware/revola.bin`.
-4. Copy your loader (or assembled `loader.bin`) as `/cfw-loader.bin` AND `/Revola/Firmware/loader.bin`.
-5. Create `/Revola/Extensions/`, `/Revola/Games/`, `/Revola/Apps/`, and `/Revola/Themes/`, then copy the `.rvx` extensions from `Extensions/` into `/Revola/Extensions/`.
-6. Safely eject and reboot without holding any keys.
-
-To roll back to RepriseOS, connect in disk mode and restore your backed-up `/osos-cfw.bin` and `/cfw-loader.bin`.
+1. Connect your iPod in **USB Disk Mode** and open **RevisionOS Installer**.
+2. Open **Migrate**. The installer automatically detects:
+   - RepriseOS (`/osos-cfw.bin`, `/iPod_Control/Games_RO/`)
+   - Legacy root RevolaOS (`/revola.bin`, `/loader.bin`)
+   - Existing `/Revola/` installations
+3. Choose what to migrate (copy RepriseOS homebrew games into `/Revola/Games/`, update extensions, write RevisionOS `revola.bin`, and clean up legacy root files), then run the migration or import your selection into the DFU installer.
 
 ---
 
-## Path 3: Fresh install from stock Apple firmware
+## Option 3: Updating extensions, games, and firmware later
 
-1. Download the [RevolaOS desktop installer](https://github.com/RevolaOS/installer/releases) for Linux, macOS, or Windows.
-2. Put the iPod into DFU mode (unlock Hold, then hold **Menu + Center** for about 12 seconds through the Apple logo until the screen goes completely black with backlight off) and install the base bootloader + RevolaOS environment using your `iPod_38.2.0.5.ipsw`. The installer automatically backs up your NOR flash first.
-3. Once installed, reconnect in USB disk mode and follow **Path 1** above to replace `/Revola/Firmware/revola.bin` with RevisionOS and copy the extensions from `Extensions/` and games from `Games/` and `Apps/`.
+- **Using the Store:** Connect your iPod in USB Disk Mode, open **RevisionOS Installer -> Store**, and install, update, or remove extensions, games, apps, or `revola.bin` in place.
+- **Manual copy:** Copy `.rvx` files from `Extensions/` into `/Revola/Extensions/`, `.eapp` folders from `Games/` and `Apps/` into `/Revola/Games/` and `/Revola/Apps/`, and `.lrc` lyrics files into `/Lyrics/` on the drive root, then safely eject.
 
+## Advanced: Manual CLI assembly
+
+If you prefer building and assembling `revola.bin` or `loader.bin` from the command line without the desktop installer, see [Firmware/README.md](../Firmware/README.md) and [source/README.md](../source/README.md).
