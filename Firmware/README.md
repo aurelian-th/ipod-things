@@ -24,7 +24,7 @@ sha256sum -c SHA256SUMS.txt
 
 ## Assembling the firmware locally
 
-1. Install or build the `revola` / `reprise` CLI from the [RevolaOS installer](https://github.com/RevolaOS/installer/releases) (or build from the source workspace).
+1. Use the [RevisionOS Installer](https://github.com/aurelian-th/ipod-things/releases) (recommended), or build the `reprise` CLI from `source/host/` (`cargo build --release -p reprise-cli`, see [source/README.md](../source/README.md)).
 2. Unpack your own copy of Apple's `iPod_38.2.0.5.ipsw` into an `inputs/` directory (`osos.bin`, `apple_loader.bin`, and EFI modules).
 3. Assemble the RevisionOS core firmware (`revola.bin`) and, if installing fresh or updating the companion, your device-personalized `loader.bin` using your NOR dump:
 
