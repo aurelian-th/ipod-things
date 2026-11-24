@@ -7,6 +7,7 @@ license = "GPL-3.0-only"
 api = "1.59"
 stability = "beta"
 type = "media"
+note = "Adapted from RepriseOS"
 
 [[module]]
 name = "main"

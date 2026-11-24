@@ -366,8 +366,8 @@
       "description": "Switch USB car protocol between iAP1 and iAP2 with 44.1 kHz digital audio, artwork, library sync, and steering-wheel controls.",
       "changelog": "Car Audio 1.0.0 built for RevisionOS API 1.74.",
       "file": "Extensions/iap2.rvx",
-      "bytes": 46088,
-      "sha256": "456e4e41ee0781f028b0f25af6f071a0a4a85571084bce8b5b48999018b33fec",
+      "bytes": 46108,
+      "sha256": "f1e3779f7802e8875adbb59a2ea00ecb6606981de8a814759a9c4a823d205b30",
       "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/iap2.rvx"
     },
     {
@@ -417,8 +417,8 @@
       "description": "Queue songs, albums, artists or podcast episodes with Play Next or Play Last. View and edit queued items at any time.",
       "changelog": "Playback Queue 0.1.0 built for RevisionOS API 1.59.",
       "file": "Extensions/playback-queue.rvx",
-      "bytes": 5732,
-      "sha256": "9de91fef6e33c8e78f06f1f26cb1800827ca669779361e9f54d622ed77239314",
+      "bytes": 5752,
+      "sha256": "e79d0e6ac9e6579852d0a08d9b389a8486371f2ef10eaa565679205c3a02c18d",
       "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/playback-queue.rvx"
     },
     {

@@ -7,6 +7,7 @@ license = "GPL-3.0-only"
 api = "1.74"
 stability = "stable"
 type = "connectivity"
+note = "Adapted from PodBox"
 
 [[module]]
 name = "main"
