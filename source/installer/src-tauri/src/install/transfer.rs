@@ -18,9 +18,10 @@ pub(super) fn inspect_storage(
     job: &mut Job<'_>,
 ) -> Result<Session> {
     job.stage("storage", "Checking storage")?;
+    let theme_bytes = crate::theme::disk_bytes(bundle)?;
     let required = assembly::disk_bytes(bundle)?
         .checked_mul(2)
-        .and_then(|total| total.checked_add(crate::theme::disk_bytes(bundle)?))
+        .and_then(|total| total.checked_add(theme_bytes))
         .and_then(|total| total.checked_add(extra_bytes))
         .ok_or("Package disk size overflow")?;
     let directory = job.directory.clone();
