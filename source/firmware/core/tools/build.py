@@ -280,6 +280,10 @@ def build_rockbox(config, out, rockbox):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tag", help="Require a clean release tag at HEAD")
+    parser.add_argument(
+        "--version",
+        help="Override embedded CORE_VERSION / SDK version string",
+    )
     parser.add_argument("--inputs", type=Path, default=ROOT / "inputs/firmware-2.0.5")
     parser.add_argument("--out", type=Path, default=ROOT / "build")
     parser.add_argument(
@@ -327,19 +331,22 @@ def main():
     except ValueError as error:
         parser.error(str(error))
     config = BuildConfig(ROOT / ".build", prefix, args.jobs, args.assembler)
+    build_identity = identity(ROOT, args.tag)
+    if args.version:
+        build_identity["version"] = args.version
     if args.target in ("all", "firmware", "firmware-recipe"):
         build_firmware(
             config,
             out,
             args.inputs,
-            identity(ROOT, args.tag),
+            build_identity,
             args.target == "firmware-recipe",
             args.selftest,
         )
     if args.target == "examples":
         build_examples(config, out)
     if args.target in ("all", "sdk"):
-        build_sdk(config, out, identity(ROOT, args.tag)["version"])
+        build_sdk(config, out, build_identity["version"])
     if args.target in ("all", "loader", "loader-recipe"):
         build_apple(config, out, args.inputs, args.target == "loader-recipe", args.nor)
     if args.target in ("all", "bootloader"):

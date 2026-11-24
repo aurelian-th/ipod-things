@@ -74,13 +74,13 @@
       "firmware.json": {
         "path": "Firmware/firmware.json",
         "bytes": 18819,
-        "sha256": "4d2257ff70c99fa9862f8ed770efae793ae3e5e076755bd1a6c1b4369bd070cb",
+        "sha256": "c8fbe83fedc4d8a04bf155f4a0e50ba3bd2c63f4dd87553db15774f097ff8574",
         "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Firmware/firmware.json"
       },
       "firmware.data": {
         "path": "Firmware/firmware.data",
-        "bytes": 82109,
-        "sha256": "ded2acd10d81c2e90a4ab2d3eaec9d40bcdd4f151f456e84088f76c5f1f4e2db",
+        "bytes": 82089,
+        "sha256": "d7d8f126d73f6947c5382236ed2cb9326a1a0b5a4c8eaede5e0a75ab14262e78",
         "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Firmware/firmware.data"
       },
       "companion.json": {
