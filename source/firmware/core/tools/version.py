@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Adapted from RepriseOS tools/version.py (8fc840d) by lgreitis.
+"""Resolve firmware identity from the checked-out source."""
+
+import re
+import subprocess
+
+
+def valid_version(value):
+    """Calendar versions in SemVer shape: YYYY.M.N, with the year, the month without
+    a leading zero and the release number within that month, plus an optional
+    SemVer prerelease (-beta.1) and build metadata. Every consumer compares them as
+    SemVer, so the shape is what keeps ordering right."""
+    if not isinstance(value, str) or not re.fullmatch(
+        r"20[0-9]{2}\.(?:[1-9]|1[0-2])\.(?:0|[1-9][0-9]*)"
+        r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+        r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?",
+        value,
+    ):
+        return False
+    prerelease = value.partition("+")[0].partition("-")[2]
+    return all(
+        not p.isdigit() or p == "0" or not p.startswith("0")
+        for p in prerelease.split(".")
+    )
+
+
+def identity(root, tag=None):
+    def git(*args):
+        return subprocess.check_output(
+            ["git", "-C", str(root), *args], text=True
+        ).strip()
+
+    revision = git("rev-parse", "--short=8", "HEAD")
+    dirty = bool(git("status", "--porcelain", "--untracked-files=normal"))
+    tags = git("tag", "--points-at", "HEAD").splitlines()
+    if tag is not None:
+        if not tag.startswith("v") or not valid_version(tag[1:]):
+            raise ValueError("Release tags must be v followed by YYYY.M.N")
+        if dirty or tag not in tags:
+            raise ValueError("A release requires a clean checkout at the requested tag")
+    elif not dirty:
+        releases = [t for t in tags if t.startswith("v") and valid_version(t[1:])]
+        if len(releases) > 1:
+            raise ValueError("Multiple release tags at HEAD; select one with --tag")
+        tag = next(iter(releases), None)
+    revision += "-dirty" if dirty else ""
+    return {
+        "version": tag[1:] if tag else "0.0.0-dev+" + revision,
+        "revision": revision,
+    }

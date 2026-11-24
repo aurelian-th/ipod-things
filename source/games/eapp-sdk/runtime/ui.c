@@ -1,0 +1,157 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* Adapted from RepriseOS game-sdk/runtime/ui.c (8fc840d) by lgreitis. */
+#include "eapp_ui.h"
+
+static void move(struct eapp_menu *menu, int direction)
+{
+    if (direction < 0 && menu->selected)
+        --menu->selected;
+    else if (direction > 0 && menu->selected + 1 < menu->count)
+        ++menu->selected;
+}
+
+enum eapp_menu_action eapp_menu_input(struct eapp_menu *menu,
+                                      const struct eapp_input_event *event)
+{
+    if (event->type != EAPP_INPUT_PRESS)
+        return EAPP_MENU_NONE;
+    switch (event->button) {
+    case EAPP_BUTTON_MENU:
+        return EAPP_MENU_BACK;
+    case EAPP_BUTTON_CENTER:
+        return menu->selected < menu->count ? EAPP_MENU_SELECT : EAPP_MENU_NONE;
+    case EAPP_BUTTON_PREVIOUS:
+        move(menu, -1);
+        break;
+    case EAPP_BUTTON_NEXT:
+    case EAPP_BUTTON_PLAY:
+        move(menu, 1);
+        break;
+    }
+    return EAPP_MENU_NONE;
+}
+
+void eapp_menu_scroll(struct eapp_menu *menu, const struct eapp_wheel *wheel)
+{
+    move(menu, wheel->delta);
+}
+
+void eapp_menu_draw(const struct eapp_menu *menu, const struct eapp_framebuffer *fb)
+{
+    eapp_clear(fb, 0);
+    if (!fb || !fb->pixels || fb->height < 70)
+        return;
+    eapp_draw_text(fb, 12, 12, menu->title, 0xffff, 1);
+    unsigned rows = (fb->height - 70) / 16;
+    if (!rows)
+        return;
+    unsigned first = menu->selected / rows * rows;
+    for (unsigned i = first; i < menu->count && i - first < rows; ++i) {
+        unsigned y = 42 + (i - first) * 16;
+        if (i == menu->selected)
+            eapp_draw_text(fb, 12, y, "+", 0xffff, 1);
+        eapp_draw_text(fb, 24, y, menu->items[i].label,
+                       i == menu->selected ? 0xffff : 0x8410, 1);
+    }
+    if (!menu->count)
+        eapp_draw_text(fb, 12, 55, "NO FILES", 0xffff, 1);
+    eapp_draw_text(fb, 12, fb->height - 20, "CENTER: SELECT   MENU: BACK", 0x8410, 1);
+}
+
+static unsigned text_length(const char *text)
+{
+    unsigned length = 0;
+    while (text[length])
+        ++length;
+    return length;
+}
+
+static unsigned lowercase(unsigned c)
+{
+    return c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c;
+}
+
+static int compare(const char *a, const char *b)
+{
+    while (*a && lowercase((uint8_t)*a) == lowercase((uint8_t)*b)) {
+        ++a;
+        ++b;
+    }
+    return (int)lowercase((uint8_t)*a) - (int)lowercase((uint8_t)*b);
+}
+
+static const char *filename(const char *path)
+{
+    const char *name = path;
+    for (; *path; ++path) {
+        if (path == name && *path == '.')
+            return NULL;
+        if (*path == '/')
+            name = path + 1;
+    }
+    return name;
+}
+
+int eapp_file_picker_open(struct eapp_file_picker *picker, const char *title,
+                          const char *directory, const char *extension)
+{
+    picker->menu = (struct eapp_menu){title, picker->items, 0, 0};
+    if (!directory || !extension || extension[0] != '.' || !extension[1])
+        return -1;
+    struct eapp_directory *dir = eapp_directory_open(directory, 1);
+    if (!dir)
+        return -1;
+    unsigned prefix = text_length(directory), suffix = text_length(extension);
+    struct eapp_directory_entry entry;
+    int result;
+    while ((result = eapp_directory_read(dir, &entry)) > 0) {
+        const char *name = filename(entry.name);
+        if (entry.is_directory || !name)
+            continue;
+        unsigned length = text_length(name);
+        if (length <= suffix || compare(name + length - suffix, extension))
+            continue;
+        if (picker->menu.count == 64) {
+            result = -2;
+            break;
+        }
+        unsigned path_length = prefix + (prefix != 0) + text_length(entry.name);
+        unsigned label_length = length - suffix;
+        if (label_length > 42)
+            label_length = 42;
+        char *path = eapp_alloc(path_length + 1 + label_length + 1);
+        if (!path) {
+            result = -1;
+            break;
+        }
+        unsigned i = 0;
+        for (; i < prefix; ++i)
+            path[i] = directory[i];
+        if (prefix)
+            path[i++] = '/';
+        for (unsigned j = 0; entry.name[j]; ++j)
+            path[i++] = entry.name[j];
+        path[i] = 0;
+        char *label = path + path_length + 1;
+        for (i = 0; i < label_length; ++i)
+            label[i] = name[i];
+        label[i] = 0;
+        i = picker->menu.count++;
+        while (i && compare(picker->items[i - 1].label, label) > 0) {
+            picker->items[i] = picker->items[i - 1];
+            --i;
+        }
+        picker->items[i] = (struct eapp_menu_item){label, path};
+    }
+    eapp_directory_close(dir);
+    if (result < 0)
+        eapp_file_picker_close(picker);
+    return result;
+}
+
+void eapp_file_picker_close(struct eapp_file_picker *picker)
+{
+    for (unsigned i = 0; i < picker->menu.count; ++i)
+        eapp_free((void *)picker->items[i].value);
+    picker->menu.count = picker->menu.selected = 0;
+}

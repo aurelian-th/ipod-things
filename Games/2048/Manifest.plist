@@ -9,7 +9,7 @@
 	<key>GUID</key>
 	<string>2048</string>
 	<key>Version</key>
-	<string>0.2.0</string>
+	<string>1.0.0</string>
 	<key>HeapSize</key>
 	<integer>256</integer>
 	<key>UserDataPath</key>

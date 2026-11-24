@@ -1,0 +1,68 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "RevisionOS Installer",
+  "identifier": "com.aurelian.revisionos.installer",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "RevisionOS Installer",
+        "width": 1280,
+        "height": 860,
+        "minWidth": 820,
+        "minHeight": 640,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Utility",
+    "shortDescription": "Install RevisionOS, extensions, and homebrew on your iPod Classic",
+    "longDescription": "Validate Apple firmware, back up boot firmware, install RevisionOS, and manage extensions, games, and apps on iPod Classic.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "files": {
+        "Resources/Assets.car": "icons/Assets.car"
+      }
+    },
+    "createUpdaterArtifacts": false,
+    "linux": {
+      "deb": {
+        "files": {
+          "/usr/lib/udev/rules.d/70-repriseos.rules": "linux/70-repriseos.rules"
+        },
+        "postInstallScript": "linux/reload-udev.sh",
+        "postRemoveScript": "linux/reload-udev.sh"
+      },
+      "rpm": {
+        "depends": ["webkit2gtk4.1", "gtk3"],
+        "files": {
+          "/usr/lib/udev/rules.d/70-repriseos.rules": "linux/70-repriseos.rules"
+        },
+        "postInstallScript": "linux/reload-udev.sh",
+        "postRemoveScript": "linux/reload-udev.sh"
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installerHooks": "./windows/hooks.nsh"
+      }
+    }
+  }
+}

@@ -1,0 +1,729 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+
+/* Hook sites of OSOS 2.0.5, one row each. Included by sites.c (table and ids) and
+ * stubs.S (per-site stubs and slots), so the two never disagree.
+ *
+ * SITE(name, address, kind, original, word0, word1, chain, argc, copy)
+ *   address   the patched word (SITE_* from the symbols header)
+ *   kind      CALL, VTABLE, ENTRY, ENTRY_NORETURN, WORD or INSERT (a call written over an
+ *             ordinary instruction whose neighbours keep r0-r3 and r12 live; the stub
+ *             preserves them and the handler's result is dropped)
+ *   original  what an unbound site does: the callee of a CALL, the pointer in a
+ *             VTABLE slot, REPLAY(name) for an ENTRY, 0 for ENTRY_NORETURN and WORD
+ *   word0/1   the Apple words at the site, checked against the pinned image at build
+ *             time and at install time
+ *   chain     1 when Apple's semantics are understood well enough for several handlers
+ *   argc      register arguments the handler receives (at most 4), plus STACK(n) for
+ *             n (1 or 2) further arguments Apple passes on the stack; the handler sees
+ *             them after `next`
+ *   copy      0, or COPY(n, r) terms or'ed together: the stub moves register r (4 to
+ *             11) into r<n> first, so a value Apple keeps in a callee-saved register
+ *             at the site is argument n (0 to 3); or'ed with PUSH(r) for a
+ *             four-argument site whose registers are all live: the stub pushes
+ *             register r after Apple's stack arguments, so it is the handler's next
+ *             stack argument (with STACK(2) the seventh value, passed on with
+ *             hook_next7)
+ */
+
+#define STACK(words) ((words) << 4)
+#define COPY(argument, reg) ((reg) << (4 * (argument)))
+#define PUSH(reg) ((reg) << 16)
+
+/* Apple loads its preferences here; the disk is readable from this point on. */
+SITE(Preferences_LoadFile_call, SITE_Preferences_LoadFile_call, CALL,
+     ADDR_Preferences_LoadFile, BL(SITE_Preferences_LoadFile_call, ADDR_Preferences_LoadFile), 0,
+     1, 1, 0)
+
+/* Called once per row while Apple builds a menu's ITEM list. */
+SITE(ResourceBlockList_AppendBorrowedBlock_call, SITE_ResourceBlockList_AppendBorrowedBlock_call,
+     CALL, ADDR_ResourceBlockList_AppendBorrowedBlock,
+     BL(SITE_ResourceBlockList_AppendBorrowedBlock_call, ADDR_ResourceBlockList_AppendBorrowedBlock),
+     0, 1, 4, 0)
+
+/* Settings model property lookup: (model, type, property, out). */
+SITE(Settings_Property_slot, SITE_Settings_Property_slot, VTABLE, ADDR_SettingsModel_GetProperty,
+     ADDR_SettingsModel_GetProperty, 0, 1, 4, 0)
+
+/* Settings model indexed property lookup: (model, type, property, index, out), out on
+ * the stack. Handlers answer their own property ids and pass the rest on. */
+SITE(Settings_IndexedProperty_slot, SITE_Settings_IndexedProperty_slot, VTABLE,
+     ADDR_SettingsModel_GetIndexedProperty, ADDR_SettingsModel_GetIndexedProperty, 0, 1,
+     4 | STACK(1), 0)
+
+/* Settings > Main Menu and Music Menu selection: (controller, action, argument); the
+ * handler toggles the selected row or opens Reset. Each has two controller classes. */
+SITE(SettingsMainMenu_Action_slot, SITE_SettingsMainMenu_Action_slot, VTABLE,
+     ADDR_SettingsMainMenu_HandleAction, ADDR_SettingsMainMenu_HandleAction, 0, 1, 3, 0)
+SITE(SettingsMainMenu_SecondaryAction_slot, SITE_SettingsMainMenu_SecondaryAction_slot, VTABLE,
+     ADDR_SettingsMainMenu_HandleAction, ADDR_SettingsMainMenu_HandleAction, 0, 1, 3, 0)
+SITE(SettingsMusicMenu_Action_slot, SITE_SettingsMusicMenu_Action_slot, VTABLE,
+     ADDR_SettingsMusicMenu_HandleAction, ADDR_SettingsMusicMenu_HandleAction, 0, 1, 3, 0)
+SITE(SettingsMusicMenu_SecondaryAction_slot, SITE_SettingsMusicMenu_SecondaryAction_slot, VTABLE,
+     ADDR_SettingsMusicMenu_HandleAction, ADDR_SettingsMusicMenu_HandleAction, 0, 1, 3, 0)
+
+/* Settings controller action dispatch: (controller, action, argument); handlers
+ * compare the action string and pass the rest on. */
+SITE(Settings_Action_slot, SITE_Settings_Action_slot, VTABLE, ADDR_Settings_HandleAction,
+     ADDR_Settings_HandleAction, 0, 1, 3, 0)
+
+/* Action dispatch of the Main, Music, Videos, Extras, Now Playing, Artists and
+ * Albums controllers: (controller, action, argument); 0 when unhandled, so
+ * handlers chain. Main, Music, Videos and Now Playing each have two controller
+ * classes with the slot. */
+SITE(Main_Action_slot, SITE_Main_Action_slot, VTABLE, ADDR_MainMediaMenu_DispatchCommonAction,
+     ADDR_MainMediaMenu_DispatchCommonAction, 0, 1, 3, 0)
+SITE(Music_Action_slot, SITE_Music_Action_slot, VTABLE, ADDR_MainMediaMenu_DispatchCommonAction,
+     ADDR_MainMediaMenu_DispatchCommonAction, 0, 1, 3, 0)
+SITE(Main_SecondaryAction_slot, SITE_Main_SecondaryAction_slot, VTABLE,
+     ADDR_MainMediaMenu_DispatchCommonAction, ADDR_MainMediaMenu_DispatchCommonAction, 0, 1, 3, 0)
+SITE(Music_SecondaryAction_slot, SITE_Music_SecondaryAction_slot, VTABLE,
+     ADDR_MainMediaMenu_DispatchCommonAction, ADDR_MainMediaMenu_DispatchCommonAction, 0, 1, 3, 0)
+SITE(Videos_Action_slot, SITE_Videos_Action_slot, VTABLE, ADDR_MainMediaMenu_DispatchAction,
+     ADDR_MainMediaMenu_DispatchAction, 0, 1, 3, 0)
+SITE(Videos_SecondaryAction_slot, SITE_Videos_SecondaryAction_slot, VTABLE,
+     ADDR_MainMediaMenu_DispatchAction, ADDR_MainMediaMenu_DispatchAction, 0, 1, 3, 0)
+SITE(NowPlaying_SecondaryAction_slot, SITE_NowPlaying_SecondaryAction_slot, VTABLE,
+     ADDR_NowPlaying_DispatchAction, ADDR_NowPlaying_DispatchAction, 0, 1, 3, 0)
+SITE(Extras_Action_slot, SITE_Extras_Action_slot, VTABLE, ADDR_ExtrasMenu_DispatchAction,
+     ADDR_ExtrasMenu_DispatchAction, 0, 1, 3, 0)
+SITE(NowPlaying_Action_slot, SITE_NowPlaying_Action_slot, VTABLE, ADDR_NowPlaying_DispatchAction,
+     ADDR_NowPlaying_DispatchAction, 0, 1, 3, 0)
+SITE(Artists_Action_slot, SITE_Artists_Action_slot, VTABLE, ADDR_MediaListController_DispatchAction,
+     ADDR_MediaListController_DispatchAction, 0, 1, 3, 0)
+SITE(Albums_Action_slot, SITE_Albums_Action_slot, VTABLE, ADDR_MediaListController_DispatchAction,
+     ADDR_MediaListController_DispatchAction, 0, 1, 3, 0)
+
+/* Song list action dispatch (song, playlist and Genius lists): (controller, action,
+ * argument). Nothing is inside them while core_boot runs during UI start-up. */
+SITE(SongList_DispatchAction_entry, SITE_SongList_DispatchAction_entry, ENTRY,
+     REPLAY(SongList_DispatchAction_entry), 0xe92d41f0, 0xe1a07001, 1, 3, 0)
+SITE(NestedPlaylists_DispatchAction_entry, SITE_NestedPlaylists_DispatchAction_entry, ENTRY,
+     REPLAY(NestedPlaylists_DispatchAction_entry), 0xe92d41f0, 0xe1a07001, 1, 3, 0)
+SITE(Genius_DispatchAction_entry, SITE_Genius_DispatchAction_entry, ENTRY,
+     REPLAY(Genius_DispatchAction_entry), 0xe92d41f0, 0xe1a07001, 1, 3, 0)
+
+/* The system dispatcher tells the UI the hold switch moved: (system, locked).
+ * Screen controllers never see the change themselves. */
+SITE(SystemUI_HandleHoldChange_call, SITE_SystemUI_HandleHoldChange_call, CALL,
+     ADDR_SystemUI_HandleHoldChange,
+     BL(SITE_SystemUI_HandleHoldChange_call, ADDR_SystemUI_HandleHoldChange), 0, 1, 2, 0)
+
+/* PowerController filters UI input events before dispatch: (controller, event).
+ * Returns 1 when an event wakes the display from sleep and is consumed, 0 otherwise. */
+SITE(PowerController_FilterEvent_entry, SITE_PowerController_FilterEvent_entry, ENTRY,
+     REPLAY(PowerController_FilterEvent_entry), 0xe92d4070, 0xe1a05000, 1, 2, 0)
+
+/* PowerController enters the non-playing backlight-off state (state 1): (controller).
+ * Normally pops standby_controller when returning from playback standby. */
+SITE(PowerController_EnterBacklightOff_entry, SITE_PowerController_EnterBacklightOff_entry,
+     ENTRY, REPLAY(PowerController_EnterBacklightOff_entry), 0xe92d4070, 0xe1a04000, 1, 1, 0)
+
+/* PowerController enters the always-on standby clock state (state 4): (controller).
+ * Pushes NowPlaying_Idle onto Navigator without checking standby_controller first. */
+SITE(PowerController_EnterStandbyClock_entry, SITE_PowerController_EnterStandbyClock_entry,
+     ENTRY, REPLAY(PowerController_EnterStandbyClock_entry), 0xe92d4010, 0xe1a04000, 1, 1, 0)
+
+/* The hold switch's logical state, read over the PMU's I2C bus on every call; no
+ * arguments, 1 when locked. Input_HandleButton on the wheel task reads it for each
+ * button press and release, and the system dispatcher and idle sleep on their
+ * tasks; nothing reads it while core_boot runs during UI start-up unless a button
+ * moves then. A replace handler answers without touching the bus. */
+SITE(HoldSwitch_GetLogicalState_entry, SITE_HoldSwitch_GetLogicalState_entry, ENTRY,
+     REPLAY(HoldSwitch_GetLogicalState_entry), 0xe92d4008, 0xe1a0000d, 0, 0, 0)
+
+/* Every media list controller opens its context menu here: (controller). The
+ * highlighted row is the selection's then. Only the two dispatchers on the UI
+ * task call it. */
+SITE(MediaListController_HandleShowContextualMenu_entry,
+     SITE_MediaListController_HandleShowContextualMenu_entry, ENTRY,
+     REPLAY(MediaListController_HandleShowContextualMenu_entry), 0xe92d4010, 0xe1a04000, 1, 1, 0)
+
+/* The Cancel row of each context menu: (items, label, action, flags). A handler
+ * appends its rows first, then the Cancel row through next. */
+#define CANCEL_APPEND(name)                                                                      \
+    SITE(name##_CancelAppend_call, SITE_##name##_CancelAppend_call, CALL,                        \
+         ADDR_ContextMenuItems_Append,                                                           \
+         BL(SITE_##name##_CancelAppend_call, ADDR_ContextMenuItems_Append), 0, 1, 4, 0)
+CANCEL_APPEND(SongList)
+CANCEL_APPEND(NestedPlaylists)
+CANCEL_APPEND(Genius)
+CANCEL_APPEND(NowPlaying)
+CANCEL_APPEND(Artists)
+CANCEL_APPEND(Albums)
+#undef CANCEL_APPEND
+
+/* The chosen context-menu action against "HandleStartGenius": (action, expected).
+ * A 0 hides the menu's pop, so the screen the action pushes follows the menu
+ * with no frame of the screen underneath. */
+SITE(ContextMenu_ScreenActionCompare_call, SITE_ContextMenu_ScreenActionCompare_call, CALL,
+     ADDR_String_CompareCString,
+     BL(SITE_ContextMenu_ScreenActionCompare_call, ADDR_String_CompareCString), 0, 1, 2, 0)
+
+/* A controller is deactivated: (controller, leaving), leaving nonzero when it is
+ * popped. The plain resource screen class, the Settings list class and the Games
+ * list class; every controller of the class passes through, so handlers check the
+ * controller. */
+SITE(ScreenController_Deactivate_slot, SITE_ScreenController_Deactivate_slot, VTABLE,
+     ADDR_ResourceScreen_Deactivate, ADDR_ResourceScreen_Deactivate, 0, 1, 2, 0)
+SITE(SettingsMenuListController_Deactivate_slot, SITE_SettingsMenuListController_Deactivate_slot,
+     VTABLE, ADDR_SettingsMenuListController_Deactivate,
+     ADDR_SettingsMenuListController_Deactivate, 0, 1, 2, 0)
+SITE(GamesMenuController_Deactivate_slot, SITE_GamesMenuController_Deactivate_slot, VTABLE,
+     ADDR_GamesMenuController_Deactivate, ADDR_GamesMenuController_Deactivate, 0, 1, 2, 0)
+
+/* A layout's event tables were loaded; observers append bindings: (layout). */
+SITE(UI_LoadLayoutEvents_call, SITE_UI_LoadLayoutEvents_call, CALL, ADDR_UI_LoadLayoutEventTables,
+     BL(SITE_UI_LoadLayoutEvents_call, ADDR_UI_LoadLayoutEventTables), 0, 1, 1, 0)
+
+/* A layout is shown without a transition animation: (manager, layout). The first
+ * call after boot shows the main menu; LayoutManager_layout holds the shown id once
+ * it returns. */
+SITE(UI_DisplayPreparedLayout_call, SITE_UI_DisplayPreparedLayout_call, CALL,
+     ADDR_UI_DisplayPreparedLayout,
+     BL(SITE_UI_DisplayPreparedLayout_call, ADDR_UI_DisplayPreparedLayout), 0, 1, 2, 0)
+
+/* Light sleep: the disk powers down inside, so stores are written on the way in. */
+SITE(Sleep_Idle_call, SITE_Sleep_Idle_call, CALL, ADDR_Power_EnterLightSleep,
+     BL(SITE_Sleep_Idle_call, ADDR_Power_EnterLightSleep), 0, 1, 1, 0)
+SITE(Sleep_Request_call, SITE_Sleep_Request_call, CALL, ADDR_Power_EnterLightSleep,
+     BL(SITE_Sleep_Request_call, ADDR_Power_EnterLightSleep), 0, 1, 1, 0)
+
+/* Apple's save-all (USB disk mode entry among its callers) writes its preferences. */
+SITE(Preferences_FlushIfDirty_call, SITE_Preferences_FlushIfDirty_call, CALL, ADDR_Preferences_FlushIfDirty,
+     BL(SITE_Preferences_FlushIfDirty_call, ADDR_Preferences_FlushIfDirty), 0, 1, 1, 0)
+
+/* Reset All Settings confirmed; Apple resets its preferences and menus. */
+SITE(SettingsModel_ResetAllSettings_call, SITE_SettingsModel_ResetAllSettings_call, CALL, ADDR_SettingsModel_ResetAllSettings,
+     BL(SITE_SettingsModel_ResetAllSettings_call, ADDR_SettingsModel_ResetAllSettings), 0, 1, 1, 0)
+
+/* Library_LoadDatabases sizes the block cache: r0 = heap total, r1 = import cost, r4 =
+ * the library browser's owner for the whole function, then sub, reserve, floor test,
+ * floor set, and BlockCache_Grow(r0). The first word becomes a call that returns the
+ * size; the other three become nops while bound. */
+SITE(BlockCache_ImportCost_word, SITE_BlockCache_ImportCost_word, CALL, 0, 0xe0400001, 0, 0, 3, COPY(2, 4))
+SITE(BlockCache_ReserveNative_word, SITE_BlockCache_ReserveNative_word, WORD, 0, 0xe240060e, 0,
+     0, 0, 0)
+SITE(BlockCache_FloorTest_word, SITE_BlockCache_FloorTest_word, WORD, 0, 0xe350060e, 0, 0, 0, 0)
+SITE(BlockCache_FloorSet_word, SITE_BlockCache_FloorSet_word, WORD, 0, 0x33a0060e, 0, 0, 0, 0)
+
+/* MediaPlayer_GetReadAheadBytes: r0 = cache bytes - 10 MiB, then cmp/movlt against the
+ * 6 MiB minimum. The compare becomes a call returning the read-ahead, the movlt a nop. */
+SITE(MediaPlayer_ReadAheadMinTest_word, SITE_MediaPlayer_ReadAheadMinTest_word, CALL, 0,
+     0xe3500606, 0, 0, 1, 0)
+SITE(MediaPlayer_ReadAheadMinSet_word, SITE_MediaPlayer_ReadAheadMinSet_word, WORD, 0,
+     0xb3a00606, 0, 0, 0, 0)
+
+/* FixedPool_Create rounds the slot size: add r0, r4, #15; bic r0, r0, #15. */
+SITE(FixedPool_SlotRoundAdd_word, SITE_FixedPool_SlotRoundAdd_word, WORD, 0, 0xe284000f, 0,
+     0, 0, 0)
+SITE(FixedPool_SlotRoundMask_word, SITE_FixedPool_SlotRoundMask_word, WORD, 0, 0xe3c0000f, 0,
+     0, 0, 0)
+
+/* eApp block manager: acquire (message 0xeab0) and release (0xeab1) of a game's blocks. */
+SITE(EAppBlocks_Acquire_call, SITE_EAppBlocks_Acquire_call, CALL, ADDR_EAppBlocks_Acquire,
+     BL(SITE_EAppBlocks_Acquire_call, ADDR_EAppBlocks_Acquire), 0, 0, 1, 0)
+SITE(EAppBlocks_Release_call, SITE_EAppBlocks_Release_call, CALL, ADDR_EAppBlocks_Release,
+     BL(SITE_EAppBlocks_Release_call, ADDR_EAppBlocks_Release), 0, 0, 1, 0)
+
+/* Game manifest reader: (reader, manifest_path, storage_mode, signature_path). A NULL
+ * signature path skips the signature check. */
+SITE(GameManifest_InitReader_call, SITE_GameManifest_InitReader_call, CALL,
+     ADDR_GameManifest_InitReader,
+     BL(SITE_GameManifest_InitReader_call, ADDR_GameManifest_InitReader), 0, 1, 4, 0)
+
+/* The games service's two list scans, (service, list, volume, root): the built-in root
+ * first, then the disk root. A handler adds a root by calling
+ * GamesService_ScanRoot again, or leaves one out by not continuing. */
+SITE(GamesService_ScanBuiltInRoot_call, SITE_GamesService_ScanBuiltInRoot_call, CALL,
+     ADDR_GamesService_ScanRoot,
+     BL(SITE_GamesService_ScanBuiltInRoot_call, ADDR_GamesService_ScanRoot), 0, 1, 4, 0)
+SITE(GamesService_ScanDiskRoot_call, SITE_GamesService_ScanDiskRoot_call, CALL,
+     ADDR_GamesService_ScanRoot,
+     BL(SITE_GamesService_ScanDiskRoot_call, ADDR_GamesService_ScanRoot), 0, 1, 4, 0)
+
+/* The games service's list build: (service). Returns early while the list is built;
+ * a handler that clears the list first makes it scan again. Called on the UI task;
+ * the service exists only once the UI task has started, after core_boot. */
+SITE(GamesService_BuildList_entry, SITE_GamesService_BuildList_entry, ENTRY,
+     REPLAY(GamesService_BuildList_entry), 0xe92d4070, 0xe1a04000, 1, 1, 0)
+
+/* The UI side of every game end, (service): GamesService_StopGame and
+ * GamesService_AbortGame reach it once the game's runtime has stopped and restored
+ * the player's settings and list; it can run twice for one game end. */
+SITE(GamesService_ResetAfterGame_entry, SITE_GamesService_ResetAfterGame_entry, ENTRY,
+     REPLAY(GamesService_ResetAfterGame_entry), 0xe92d4010, 0xe1a04000, 1, 1, 0)
+
+/* The play count caption of a Games row, (service, id): the games service asks for
+ * "Never Played" or "Played Once" at the first site and for "Played %d Times", which
+ * it formats itself, at the second. A handler answers its own string by not
+ * continuing. */
+SITE(GamesService_PlayedString_call, SITE_GamesService_PlayedString_call, CALL,
+     ADDR_ResourceService_GetString,
+     BL(SITE_GamesService_PlayedString_call, ADDR_ResourceService_GetString), 0, 1, 2, 0)
+SITE(GamesService_PlayedTimesString_call, SITE_GamesService_PlayedTimesString_call, CALL,
+     ADDR_ResourceService_GetString,
+     BL(SITE_GamesService_PlayedTimesString_call, ADDR_ResourceService_GetString), 0, 1, 2, 0)
+
+/* Path of a game's file: (out, directory_kind, identifier, storage, relative_path),
+ * the last on the stack; every reader of a package derives its paths here. Called on
+ * the UI task and the game's; nothing is inside it while core_boot runs during UI
+ * start-up. */
+SITE(GameFiles_BuildPath_entry, SITE_GameFiles_BuildPath_entry, ENTRY,
+     REPLAY(GameFiles_BuildPath_entry), 0xe92d40fe, 0xe1a05001, 1, 4 | STACK(1), 0)
+
+/* The artwork ids of the Games rows, which Apple's artwork cache keys loaded icons
+ * by: (service, index, out_id) answers the id of a row, (service, artwork_id, out)
+ * the artwork path and (service, artwork_id) the storage of the row with that id.
+ * The games artwork provider is the only caller of each. */
+SITE(GamesService_GetArtworkId_entry, SITE_GamesService_GetArtworkId_entry, ENTRY,
+     REPLAY(GamesService_GetArtworkId_entry), 0xe92d4070, 0xe1a04001, 1, 3, 0)
+SITE(GamesService_GetArtworkPath_entry, SITE_GamesService_GetArtworkPath_entry, ENTRY,
+     REPLAY(GamesService_GetArtworkPath_entry), 0xe92d4010, 0xe1a04002, 1, 3, 0)
+SITE(GamesService_GetArtworkStorage_entry, SITE_GamesService_GetArtworkStorage_entry, ENTRY,
+     REPLAY(GamesService_GetArtworkStorage_entry), 0xe92d4010, 0xe590202c, 1, 2, 0)
+
+/* Position of an entry in a list order: (entry, order, reverse), position in r0 and
+ * the entry in r1. Nothing is inside it while core_boot runs during UI start-up. */
+SITE(MediaList_GetEntryOrderIndex_entry, SITE_MediaList_GetEntryOrderIndex_entry, ENTRY,
+     REPLAY(MediaList_GetEntryOrderIndex_entry), 0xe92d40f7, 0xe1b06000, 0, 3, 0)
+
+/* ArtworkDB load: (db, owner, path, a3, a4, a5); the last two on the stack. */
+SITE(ArtworkDatabase_Import_call, SITE_ArtworkDatabase_Import_call, CALL, ADDR_ArtworkDatabase_Import,
+     BL(SITE_ArtworkDatabase_Import_call, ADDR_ArtworkDatabase_Import), 0, 1, 4 | STACK(2), 0)
+/* One image's thumbnail chain read: (reader, image, count, flags). */
+SITE(ArtworkDatabase_ReadImageThumbs_call, SITE_ArtworkDatabase_ReadImageThumbs_call, CALL,
+     ADDR_ArtworkDatabase_ReadImageThumbs,
+     BL(SITE_ArtworkDatabase_ReadImageThumbs_call, ADDR_ArtworkDatabase_ReadImageThumbs), 0, 1, 4, 0)
+/* Photo album image lookup by id while the database loads: (db, id). */
+SITE(ArtworkDatabase_FindById_PhotoAlbum_call, SITE_ArtworkDatabase_FindById_PhotoAlbum_call, CALL, ADDR_ArtworkDatabase_FindById,
+     BL(SITE_ArtworkDatabase_FindById_PhotoAlbum_call, ADDR_ArtworkDatabase_FindById), 0, 1, 2, 0)
+/* Image lookups by DBID: (db, a1, dbid_low, dbid_high, sorted); the last on the stack. */
+SITE(ArtworkDatabase_FindByDbid_0804581c_call, SITE_ArtworkDatabase_FindByDbid_0804581c_call, CALL, ADDR_ArtworkDatabase_FindByDbid,
+     BL(SITE_ArtworkDatabase_FindByDbid_0804581c_call, ADDR_ArtworkDatabase_FindByDbid), 0, 1, 4 | STACK(1), 0)
+SITE(ArtworkDatabase_FindByDbid_08046494_call, SITE_ArtworkDatabase_FindByDbid_08046494_call, CALL,
+     ADDR_ArtworkDatabase_FindByDbid,
+     BL(SITE_ArtworkDatabase_FindByDbid_08046494_call, ADDR_ArtworkDatabase_FindByDbid), 0, 1, 4 | STACK(1), 0)
+/* The mhit parser's store of a track's image id: str r0, [r4, #0xf0]. */
+SITE(TrackData_ArtworkId_word, SITE_TrackData_ArtworkId_word, INSERT, 0, 0xe58400f0, 0,
+     0, 2, COPY(1, 4))
+/* The iTunesDB track parse: (reader). */
+SITE(ITunesDB_ImportTrackDataset_call, SITE_ITunesDB_ImportTrackDataset_call, CALL,
+     ADDR_ITunesDB_ImportTrackDataset,
+     BL(SITE_ITunesDB_ImportTrackDataset_call, ADDR_ITunesDB_ImportTrackDataset), 0, 1, 1, 0)
+
+/* EP0 vendor device-to-host requests (bmRequestType 0xC0), on USBDeviceTask:
+ * (usb, &length) with the host's wLength in length; returns the data, the length
+ * written back, or 0 to stall. Apple answers only bRequest 0x40. */
+SITE(USB_HandleVendorDeviceRead_call, SITE_USB_HandleVendorDeviceRead_call, CALL,
+     ADDR_USB_HandleVendorDeviceRead,
+     BL(SITE_USB_HandleVendorDeviceRead_call, ADDR_USB_HandleVendorDeviceRead), 0, 1, 2, 0)
+/* EP0 requests without a data stage, on USBDeviceTask: (usb); 0 stalls. */
+SITE(USB_DispatchNoDataRequest_call, SITE_USB_DispatchNoDataRequest_call, CALL,
+     ADDR_USB_DispatchNoDataRequest,
+     BL(SITE_USB_DispatchNoDataRequest_call, ADDR_USB_DispatchNoDataRequest), 0, 1, 1, 0)
+/* The OS disk client asked by the storage arbiter to give the volume to USB mass
+ * storage: (client), with the arbiter's mutex held; 0 keeps it, and SCSI then
+ * answers medium not present instead of starting disk mode. */
+SITE(DiskClient_Yield_slot, SITE_DiskClient_Yield_slot, VTABLE, ADDR_DiskClient_Yield,
+     ADDR_DiskClient_Yield, 0, 0, 1, 0)
+/* USB disk mode has ended and the volume is readable again: App_ExitDiskMode
+ * returns to the main menu, on the UI task. No arguments. */
+SITE(DiskModeExit_PopToMainScreen_call, SITE_DiskModeExit_PopToMainScreen_call, CALL,
+     ADDR_Navigator_PopToMainScreen,
+     BL(SITE_DiskModeExit_PopToMainScreen_call, ADDR_Navigator_PopToMainScreen), 0, 1, 0, 0)
+/* Every IRQ, in IRAM: (frame) with the interrupted task's registers; returns the
+ * stack to resume. Patched at boot with IRQs off; no IRQ handler runs then. */
+SITE(IRQ_Dispatch_entry, SITE_IRQ_Dispatch_entry, ENTRY, REPLAY(IRQ_Dispatch_entry),
+     0xe92d4010, 0xe1a04000, 1, 1, 0)
+/* One run of a text view's string: (view, text, argument). The two draw calls
+ * inside take stack arguments a call site cannot forward; the context
+ * (view + TextView_context) holds the clip and colour once it returns. Nothing
+ * is inside it while core_boot runs during UI start-up. */
+SITE(TextView_DrawString_entry, SITE_TextView_DrawString_entry, ENTRY,
+     REPLAY(TextView_DrawString_entry), 0xe92d40f0, 0xe1a04000, 1, 3, 0)
+
+/* A scrolling (marquee) text view sets its colour before copying its pre-rendered
+ * text bitmap: (context, rgba, view) with the view copied from r4. No string passes
+ * through the draw; view + TextView_text points to it. */
+SITE(MarqueeTextView_DrawColor_call, SITE_MarqueeTextView_DrawColor_call, CALL,
+     ADDR_GraphicsContext_SetColor,
+     BL(SITE_MarqueeTextView_DrawColor_call, ADDR_GraphicsContext_SetColor), 0, 1, 3, COPY(2, 4))
+
+/* A text view sets its colour before drawing: (context, rgba, view) with the view
+ * copied from r6. Every stock label passes here, so a theme maps colours at this
+ * one site. */
+SITE(TextView_DrawColor_call, SITE_TextView_DrawColor_call, CALL, ADDR_GraphicsContext_SetColor,
+     BL(SITE_TextView_DrawColor_call, ADDR_GraphicsContext_SetColor), 0, 1, 3, COPY(2, 6))
+
+/* Every fill of a graphics context, as the surface sees it: (surface, rect, rgba,
+ * mode, clip), the clip on the stack. Backgrounds, bars and borders are drawn
+ * through here. */
+SITE(GraphicsContext_FillRect_call, SITE_GraphicsContext_FillRect_call, CALL,
+     ADDR_Surface_FillRect, BL(SITE_GraphicsContext_FillRect_call, ADDR_Surface_FillRect), 0, 1,
+     4 | STACK(1), 0)
+
+/* A view fills its background: (context, rect, view) with the view copied from r5,
+ * so a handler can tell views that keep their own artwork from the rest. */
+SITE(View_BackgroundFill_call, SITE_View_BackgroundFill_call, CALL, ADDR_GraphicsContext_FillRect,
+     BL(SITE_View_BackgroundFill_call, ADDR_GraphicsContext_FillRect), 0, 1, 3, COPY(2, 5))
+
+/* Cover Flow and the Now Playing album art clear their GLES surface to a colour:
+ * (red, green, blue, alpha), 16.16 fixed point. */
+SITE(CoverFlow_ClearColor_call, SITE_CoverFlow_ClearColor_call, CALL, ADDR_glClearColorx,
+     BL(SITE_CoverFlow_ClearColor_call, ADDR_glClearColorx), 0, 1, 4, 0)
+SITE(AlbumArt_ClearColor_call, SITE_AlbumArt_ClearColor_call, CALL, ADDR_glClearColorx,
+     BL(SITE_AlbumArt_ClearColor_call, ADDR_glClearColorx), 0, 1, 4, 0)
+
+/* The album art reflection fades each RGB565 pixel toward the background:
+ * (pixel, background, weight); the result is the blended pixel. */
+SITE(ArtworkReflection_Blend_call, SITE_ArtworkReflection_Blend_call, CALL, ADDR_RGB565_BlendFixed,
+     BL(SITE_ArtworkReflection_Blend_call, ADDR_RGB565_BlendFixed), 0, 1, 3, 0)
+
+/* A context clears a rectangle to its background colour, as a list's pre-rendered
+ * rows and the view windows are: the same call as GraphicsContext_FillRect_call,
+ * (surface, rect, rgba, mode, clip), the clip on the stack. */
+SITE(GraphicsContext_ClearRect_call, SITE_GraphicsContext_ClearRect_call, CALL,
+     ADDR_Surface_FillRect, BL(SITE_GraphicsContext_ClearRect_call, ADDR_Surface_FillRect), 0, 1,
+     4 | STACK(1), 0)
+
+/* Views that colour a bitmap or a label before drawing it: (context, rgba, view),
+ * the view copied from the register each keeps it in. A bitmap view draws a
+ * coverage mask in the colour; the keyboard its key letters; an option bar its
+ * segment labels; a calendar day cell its number and the month view its weekday
+ * names (the calendar sites pass no view). */
+SITE(BitmapView_DrawColor_call, SITE_BitmapView_DrawColor_call, CALL, ADDR_GraphicsContext_SetColor,
+     BL(SITE_BitmapView_DrawColor_call, ADDR_GraphicsContext_SetColor), 0, 1, 3, COPY(2, 4))
+SITE(KeyboardView_DrawColor_call, SITE_KeyboardView_DrawColor_call, CALL,
+     ADDR_GraphicsContext_SetColor,
+     BL(SITE_KeyboardView_DrawColor_call, ADDR_GraphicsContext_SetColor), 0, 1, 3, COPY(2, 5))
+SITE(OptionBarView_DrawColor_call, SITE_OptionBarView_DrawColor_call, CALL,
+     ADDR_GraphicsContext_SetColor,
+     BL(SITE_OptionBarView_DrawColor_call, ADDR_GraphicsContext_SetColor), 0, 1, 3, COPY(2, 4))
+SITE(CalendarDayCell_DrawColor_call, SITE_CalendarDayCell_DrawColor_call, CALL,
+     ADDR_GraphicsContext_SetColor,
+     BL(SITE_CalendarDayCell_DrawColor_call, ADDR_GraphicsContext_SetColor), 0, 1, 2, 0)
+SITE(CalendarView_DrawColor_call, SITE_CalendarView_DrawColor_call, CALL,
+     ADDR_GraphicsContext_SetColor,
+     BL(SITE_CalendarView_DrawColor_call, ADDR_GraphicsContext_SetColor), 0, 1, 2, 0)
+
+/* Paletted artwork copied into a view: (context, source, source_rect, rect, alpha,
+ * flags), alpha and flags on the stack, then the view from r4. A bitmap view and a
+ * menu row's icon view each blit whole or tiled; a calendar day cell blits its two
+ * markers. A theme swaps the palette of a tinted bitmap for the on-accent colour
+ * around the blit while the view is highlighted. */
+SITE(BitmapView_Blit_call, SITE_BitmapView_Blit_call, CALL, ADDR_GraphicsContext_CopyRect,
+     BL(SITE_BitmapView_Blit_call, ADDR_GraphicsContext_CopyRect), 0, 1, 4 | STACK(2), PUSH(4))
+SITE(BitmapView_TileBlit_call, SITE_BitmapView_TileBlit_call, CALL, ADDR_GraphicsContext_CopyRect,
+     BL(SITE_BitmapView_TileBlit_call, ADDR_GraphicsContext_CopyRect), 0, 1, 4 | STACK(2), PUSH(4))
+SITE(MenuRowBitmapView_Blit_call, SITE_MenuRowBitmapView_Blit_call, CALL,
+     ADDR_GraphicsContext_CopyRect,
+     BL(SITE_MenuRowBitmapView_Blit_call, ADDR_GraphicsContext_CopyRect), 0, 1, 4 | STACK(2),
+     PUSH(4))
+SITE(MenuRowBitmapView_TileBlit_call, SITE_MenuRowBitmapView_TileBlit_call, CALL,
+     ADDR_GraphicsContext_CopyRect,
+     BL(SITE_MenuRowBitmapView_TileBlit_call, ADDR_GraphicsContext_CopyRect), 0, 1, 4 | STACK(2),
+     PUSH(4))
+SITE(CalendarDayCell_TopMarkerBlit_call, SITE_CalendarDayCell_TopMarkerBlit_call, CALL,
+     ADDR_GraphicsContext_CopyRect,
+     BL(SITE_CalendarDayCell_TopMarkerBlit_call, ADDR_GraphicsContext_CopyRect), 0, 1,
+     4 | STACK(2), PUSH(4))
+SITE(CalendarDayCell_BottomMarkerBlit_call, SITE_CalendarDayCell_BottomMarkerBlit_call, CALL,
+     ADDR_GraphicsContext_CopyRect,
+     BL(SITE_CalendarDayCell_BottomMarkerBlit_call, ADDR_GraphicsContext_CopyRect), 0, 1,
+     4 | STACK(2), PUSH(4))
+
+/* The Now Playing album art: the view's draw slot (view, draw_argument, clip), then
+ * inside its animation the renderer draw (renderer) and the edge smoothing
+ * (pixel buffer) of the tilted cover. A flat cover replaces the first and skips
+ * the second. */
+SITE(GLAlbumArtView_Draw_slot, SITE_GLAlbumArtView_Draw_slot, VTABLE, ADDR_GLAlbumArtView_Draw,
+     ADDR_GLAlbumArtView_Draw, 0, 1, 3, 0)
+SITE(AlbumArt_RendererDraw_call, SITE_AlbumArt_RendererDraw_call, CALL, ADDR_ArtworkRenderer_Draw,
+     BL(SITE_AlbumArt_RendererDraw_call, ADDR_ArtworkRenderer_Draw), 0, 1, 1, 0)
+SITE(AlbumArt_EdgeLines_call, SITE_AlbumArt_EdgeLines_call, CALL, ADDR_CoverFlowEdges_SmoothCenter,
+     BL(SITE_AlbumArt_EdgeLines_call, ADDR_CoverFlowEdges_SmoothCenter), 0, 1, 1, 0)
+
+/* The selection bar's drawer: a beq the stock firmware never takes, to a second
+ * renderer that draws the bar from the RAM colour words SelectionBar_RamGradient
+ * and SelectionBar_RamHighlight (the stock renderer blends fixed colours). A
+ * theme sets the words and makes the branch unconditional. */
+SITE(SelectionBar_StyleBranch_word, SITE_SelectionBar_StyleBranch_word, WORD, 0, 0x0a000138, 0, 0,
+     0, 0)
+
+/* The artwork provider's slot lookup, (provider, slot): slot 0 is the cover a menu
+ * row shows; NULL means none. Only the UI task asks. */
+SITE(MediaArtworkProvider_GetSlotArtwork_entry, SITE_MediaArtworkProvider_GetSlotArtwork_entry,
+     ENTRY, REPLAY(MediaArtworkProvider_GetSlotArtwork_entry), 0xe92d4070, 0xe1a05000, 1, 2, 0)
+
+/* The UI message loop takes one message: (wait, out_quit); the result is 0 once the
+ * queue is empty. */
+SITE(UI_ProcessMessage_call, SITE_UI_ProcessMessage_call, CALL, ADDR_UI_ProcessMessage,
+     BL(SITE_UI_ProcessMessage_call, ADDR_UI_ProcessMessage), 0, 1, 2, 0)
+
+/* Accessory signature verification, called only by the General Lingo 0x18 handler.
+ * RSA: (manager, channel, key_id, signature, signature_bytes), last on the stack.
+ * Alternate: (authentication, signature, signature_bytes). */
+SITE(IAP_VerifyDeviceSignatureRSA_call, SITE_IAP_VerifyDeviceSignatureRSA_call, CALL,
+     ADDR_IAP_VerifyDeviceSignatureRSA,
+     BL(SITE_IAP_VerifyDeviceSignatureRSA_call, ADDR_IAP_VerifyDeviceSignatureRSA),
+     0, 0, 4 | STACK(1), 0)
+SITE(IAP_VerifyDeviceSignatureAlternate_call, SITE_IAP_VerifyDeviceSignatureAlternate_call, CALL,
+     ADDR_IAP_VerifyDeviceSignatureAlternate,
+     BL(SITE_IAP_VerifyDeviceSignatureAlternate_call, ADDR_IAP_VerifyDeviceSignatureAlternate),
+     0, 0, 3, 0)
+
+/* Regional volume policy: tst r0, #0x80 on SysInfo, movs of 222 for the EU ceiling with the
+ * limit off and the default limit, two calls to Platform_UsesVolumeWarningPolicy, the beq
+ * past the 18-hour exposure reset and the first instruction of the 20-hour exposure event.
+ * The startup clamp runs after Preferences_LoadFile_call, so these are bound before it. */
+SITE(VolumePolicy_RegionTest_word, SITE_VolumePolicy_RegionTest_word, WORD, 0, 0xe3100080, 0,
+     0, 0, 0)
+SITE(Volume_EUOffCeiling_word, SITE_Volume_EUOffCeiling_word, WORD, 0, 0x03a000de, 0, 0, 0, 0)
+SITE(Volume_EUDefaultLimit_word, SITE_Volume_EUDefaultLimit_word, WORD, 0, 0xe3a000de, 0, 0, 0,
+     0)
+SITE(VolumePolicy_WarningPolicyTest_word, SITE_VolumePolicy_WarningPolicyTest_word, WORD, 0,
+     0xebfbc66e, 0, 0, 0, 0)
+SITE(Volume_StartupClampTest_word, SITE_Volume_StartupClampTest_word, WORD, 0, 0xebffba86, 0,
+     0, 0, 0)
+SITE(VolumeExposure_TrackFinishTest_word, SITE_VolumeExposure_TrackFinishTest_word, WORD, 0,
+     0x0a00000f, 0, 0, 0, 0)
+SITE(MediaPlayer_PostVolumeExposureLimitEvent_word,
+     SITE_MediaPlayer_PostVolumeExposureLimitEvent_word, WORD, 0, 0xe3a00005, 0, 0, 0, 0)
+
+/* The EQ of the audio effects chain: one ThreeBandEQ for all playback. Process:
+ * (eq, samples, frames, output, output_frames), the last on the stack; interleaved
+ * stereo in place, on the PCM output pump task while the effect is enabled. Reset:
+ * (eq), the histories at rest. The two load calls: (eq), the stages for the stored
+ * preset and sample rate, when either changes; a reset follows each. Load and reset
+ * run on the task that changed the setting or prepared the track, not serialised
+ * with process. */
+SITE(EQ_Process_slot, SITE_EQ_Process_slot, VTABLE, ADDR_EQ_ProcessThreeBiquadsInPlace,
+     ADDR_EQ_ProcessThreeBiquadsInPlace, 0, 0, 4 | STACK(1), 0)
+SITE(EQ_Reset_slot, SITE_EQ_Reset_slot, VTABLE, ADDR_EQ_ResetAllBiquadStates,
+     ADDR_EQ_ResetAllBiquadStates, 0, 0, 1, 0)
+SITE(EQ_SetPreset_Load_call, SITE_EQ_SetPreset_Load_call, CALL, ADDR_EQ_LoadPresetCoefficients,
+     BL(SITE_EQ_SetPreset_Load_call, ADDR_EQ_LoadPresetCoefficients), 0, 0, 1, 0)
+SITE(EQ_SetRate_Load_call, SITE_EQ_SetRate_Load_call, CALL, ADDR_EQ_LoadPresetCoefficients,
+     BL(SITE_EQ_SetRate_Load_call, ADDR_EQ_LoadPresetCoefficients), 0, 0, 1, 0)
+
+/* EQ settings id to DSP preset: (settings_id); ids 100 to 121 are presets 1 to 22,
+ * any other 0. Its two callers are in MediaTrack_ApplyEQ, under the player's mutex;
+ * nothing is inside it while core_boot runs during UI start-up. */
+SITE(EQ_SettingsIdToDspPreset_entry, SITE_EQ_SettingsIdToDspPreset_entry, ENTRY,
+     REPLAY(EQ_SettingsIdToDspPreset_entry), 0xe2400064, 0xe3500015, 0, 1, 0)
+
+/* The player applies an EQ settings id: (player, settings_id). Settings > EQ and
+ * Reset All Settings reach it through Settings_SetEQPreset; boot does not. */
+SITE(EQ_ApplySettingsId_slot, SITE_EQ_ApplySettingsId_slot, VTABLE,
+     ADDR_MediaPlayer_ApplyEQSettingsId, ADDR_MediaPlayer_ApplyEQSettingsId, 0, 1, 2, 0)
+
+/* MediaTrack_ApplyEQ reads the track's own EQ settings id, which replaces the
+ * player's unless that is Flat: (item, track), track copied from r4; 0 keeps the
+ * player's. */
+SITE(EQ_TrackPreset_call, SITE_EQ_TrackPreset_call, CALL, ADDR_MediaItem_GetEQSettingsId,
+     BL(SITE_EQ_TrackPreset_call, ADDR_MediaItem_GetEQSettingsId), 0, 0, 2, COPY(1, 4))
+
+/* The number of EQ presets with Off, 23: cmp r1 in EQ_SetDspPreset and the Settings
+ * model's preview and name lookups, cmp r2 in EQ_SettingsIdToMenuIndex, mov r0 for
+ * the EQ list's row count, cmp r5 in Settings_CollectPropertyResources. */
+SITE(EQ_DspCount_word, SITE_EQ_DspCount_word, WORD, 0, 0xe3510017, 0, 0, 0, 0)
+SITE(EQ_PreviewCount_word, SITE_EQ_PreviewCount_word, WORD, 0, 0xe3510017, 0, 0, 0, 0)
+SITE(EQ_NameCount_word, SITE_EQ_NameCount_word, WORD, 0, 0xe3510017, 0, 0, 0, 0)
+SITE(EQ_SettingsCount_word, SITE_EQ_SettingsCount_word, WORD, 0, 0xe3520017, 0, 0, 0, 0)
+SITE(EQ_ProviderCount_word, SITE_EQ_ProviderCount_word, WORD, 0, 0xe3a00017, 0, 0, 0, 0)
+SITE(EQ_ResourceCount_word, SITE_EQ_ResourceCount_word, WORD, 0, 0xe3550017, 0, 0, 0, 0)
+
+/* Literals holding the two tables with a row per preset: the settings ids
+ * (EQ_PresetIds) and the name and preview resource ids (EQ_Presets). */
+SITE(EQ_MenuIds_literal, SITE_EQ_MenuIds_literal, WORD, 0, ADDR_EQ_PresetIds, 0, 0, 0, 0)
+SITE(EQ_SettingsIds_literal, SITE_EQ_SettingsIds_literal, WORD, 0, ADDR_EQ_PresetIds, 0, 0, 0, 0)
+SITE(EQ_PreviewTable_literal, SITE_EQ_PreviewTable_literal, WORD, 0, ADDR_EQ_Presets, 0, 0, 0, 0)
+SITE(EQ_NameTable_literal, SITE_EQ_NameTable_literal, WORD, 0, ADDR_EQ_Presets, 0, 0, 0, 0)
+SITE(EQ_ResourceTable_literal, SITE_EQ_ResourceTable_literal, WORD, 0, ADDR_EQ_Presets, 0, 0, 0,
+     0)
+
+/* Add to On-The-Go from an album or artist list hands the browser's filtered
+ * selection to the On-The-Go playlist: (otg, row, browser, save); row is -1 for the
+ * whole selection. */
+SITE(MediaList_OnTheGoAdd_call, SITE_MediaList_OnTheGoAdd_call, CALL,
+     ADDR_OnTheGo_AddBrowserSelection,
+     BL(SITE_MediaList_OnTheGoAdd_call, ADDR_OnTheGo_AddBrowserSelection), 0, 0, 4, 0)
+
+#ifdef CORE_SELFTEST
+/* Settings > Main Menu > Reset Menu. Exercised by the self-test only; no task can be
+ * inside it while core_boot runs during UI start-up. */
+SITE(SettingsModel_ResetMainMenu_entry, SITE_SettingsModel_ResetMainMenu_entry, ENTRY,
+     REPLAY(SettingsModel_ResetMainMenu_entry), 0xe92d47f0, 0xe1a09000, 0, 1, 0)
+#endif
+
+/* Podcast episode context menu and action dispatch. */
+SITE(PodcastEpisodes_CancelAppend_call, SITE_PodcastEpisodes_CancelAppend_call, CALL,
+     ADDR_ContextMenuItems_Append,
+     BL(SITE_PodcastEpisodes_CancelAppend_call, ADDR_ContextMenuItems_Append), 0, 1, 4, 0)
+SITE(PodcastEpisodes_Action_slot, SITE_PodcastEpisodes_Action_slot, VTABLE,
+     ADDR_PodcastEpisodes_DispatchAction, ADDR_PodcastEpisodes_DispatchAction, 0, 1, 3, 0)
+
+/* The processed PCM on the output pump task, after every effect stage and the
+ * post-effects gain, as Audio_ProcessEffectsAndOutput fetches the queue to submit it:
+ * (samples, frames, context), from r6, r4 and r9. Interleaved S16 stereo in place when
+ * AudioEffectsContext_output_bits is 16 and _output_channels 2, at _output_rate.
+ * Apple's callee, a DRAM thunk into IRAM, takes no arguments and its result is the
+ * queue the submission needs, so a handler returns what next returns. */
+SITE(AudioOutputQueue_Get_call, SITE_AudioOutputQueue_Get_call, CALL,
+     ADDR_AudioOutputQueue_Get_thunk,
+     BL(SITE_AudioOutputQueue_Get_call, ADDR_AudioOutputQueue_Get_thunk), 0, 1, 3,
+     COPY(0, 6) | COPY(1, 4) | COPY(2, 9))
+
+/* The iTunes U episode, audiobook, movie, TV episode and video playlist lists:
+ * the Cancel row of the menus that have one, and each class's action slot
+ * (controller, action, argument). Movies and TV episodes build no menu; their
+ * show-context-menu slot (controller, model row) holds the base default, which
+ * only returns 1, so a handler there opens one of its own. */
+SITE(ITunesUEpisodes_CancelAppend_call, SITE_ITunesUEpisodes_CancelAppend_call, CALL,
+     ADDR_ContextMenuItems_Append,
+     BL(SITE_ITunesUEpisodes_CancelAppend_call, ADDR_ContextMenuItems_Append), 0, 1, 4, 0)
+SITE(ITunesUEpisodes_Action_slot, SITE_ITunesUEpisodes_Action_slot, VTABLE,
+     ADDR_ITunesUEpisodes_DispatchAction, ADDR_ITunesUEpisodes_DispatchAction, 0, 1, 3, 0)
+SITE(Audiobooks_CancelAppend_call, SITE_Audiobooks_CancelAppend_call, CALL,
+     ADDR_ContextMenuItems_Append,
+     BL(SITE_Audiobooks_CancelAppend_call, ADDR_ContextMenuItems_Append), 0, 1, 4, 0)
+SITE(Audiobooks_Action_slot, SITE_Audiobooks_Action_slot, VTABLE,
+     ADDR_MediaListController_DispatchAction, ADDR_MediaListController_DispatchAction, 0, 1, 3, 0)
+SITE(Movies_ShowContextMenu_slot, SITE_Movies_ShowContextMenu_slot, VTABLE,
+     ADDR_MediaListController_ShowContextMenuDefault, ADDR_MediaListController_ShowContextMenuDefault,
+     0, 1, 2, 0)
+SITE(Movies_Action_slot, SITE_Movies_Action_slot, VTABLE,
+     ADDR_Movies_DispatchAction, ADDR_Movies_DispatchAction, 0, 1, 3, 0)
+SITE(TVEpisodes_ShowContextMenu_slot, SITE_TVEpisodes_ShowContextMenu_slot, VTABLE,
+     ADDR_MediaListController_ShowContextMenuDefault, ADDR_MediaListController_ShowContextMenuDefault,
+     0, 1, 2, 0)
+SITE(TVEpisodes_Action_slot, SITE_TVEpisodes_Action_slot, VTABLE,
+     ADDR_TVEpisodes_DispatchAction, ADDR_TVEpisodes_DispatchAction, 0, 1, 3, 0)
+SITE(NestedVideoPlaylists_Action_slot, SITE_NestedVideoPlaylists_Action_slot, VTABLE,
+     ADDR_NestedVideoPlaylists_DispatchAction, ADDR_NestedVideoPlaylists_DispatchAction, 0, 1, 3, 0)
+
+/* The stopped check after Play/Pause's radio guards. Apple calls the known
+ * IsStopped vtable method with blx r1 here. */
+SITE(MediaPlayer_ToggleStopped_call, SITE_MediaPlayer_ToggleStopped_call, CALL,
+     ADDR_MediaPlayer_IsStopped, 0xe12fff31, 0, 1, 1, 0)
+
+/* Native list status drawables borrow pixels until replacement or model destruction. */
+SITE(MediaListModel_IndexedProperty_slot, SITE_MediaListModel_IndexedProperty_slot, VTABLE,
+     ADDR_MediaListModel_GetIndexedProperty, ADDR_MediaListModel_GetIndexedProperty, 0, 1,
+     4 | STACK(1), 0)
+SITE(MediaListModel_Destroy_slot, SITE_MediaListModel_Destroy_slot, VTABLE,
+     ADDR_MediaListModel_Destroy, ADDR_MediaListModel_Destroy, 0, 1, 1, 0)
+/* The deleting destructor calls the non-deleting destructor directly. */
+SITE(MediaListModel_Destroy_call, SITE_MediaListModel_Destroy_call, CALL,
+     ADDR_MediaListModel_Destroy,
+     BL(SITE_MediaListModel_Destroy_call, ADDR_MediaListModel_Destroy), 0, 1, 1, 0)
+
+/* MP4 parser seek: the audio track walk, (parser, position_ms). Only the audio
+ * worker task calls it (MediaStream_Seek and the stream start), never while
+ * core_boot runs. A filter pre-positions the track state and continues. */
+SITE(MP4Parser_SeekAudioTrack_entry, SITE_MP4Parser_SeekAudioTrack_entry, ENTRY,
+     REPLAY(MP4Parser_SeekAudioTrack_entry), 0xe92d4ffe, 0xe1a04000, 0, 2, 0)
+
+/* The MP4 parser compares the 64-bit decode time with the edit list after
+ * `asr r1, r0, #31` on its low word: in MP4Parser_ReadAudioTrackSamples against the
+ * edit start (r2 = track + edit_media_start) and end (r2 = track + edit_media_end),
+ * and in MP4Parser_SeekAudioTrack against the end. */
+SITE(MP4Parser_ReadEditStartTest_word, SITE_MP4Parser_ReadEditStartTest_word, WORD, 0,
+     0xe1a01fc0, 0, 0, 0, 0)
+SITE(MP4Parser_ReadEditEndTest_word, SITE_MP4Parser_ReadEditEndTest_word, WORD, 0, 0xe1a01fc0,
+     0, 0, 0, 0)
+SITE(MP4Parser_SeekEditEndTest_word, SITE_MP4Parser_SeekEditEndTest_word, WORD, 0, 0xe1a01fc0,
+     0, 0, 0, 0)
+
+/* A progress bar draws its chapter marks after its fill: (view, context, bar rect).
+ * Two classes share the routine, which blits ProgressBar_marker_count marks in
+ * chapter order through the call below. */
+SITE(ProgressBar_DrawMarkers_slot, SITE_ProgressBar_DrawMarkers_slot, VTABLE,
+     ADDR_ProgressBar_DrawMarkers, ADDR_ProgressBar_DrawMarkers, 0, 1, 3, 0)
+SITE(ProgressBarStyle8_DrawMarkers_slot, SITE_ProgressBarStyle8_DrawMarkers_slot, VTABLE,
+     ADDR_ProgressBar_DrawMarkers, ADDR_ProgressBar_DrawMarkers, 0, 1, 3, 0)
+/* One chapter mark: (cache, context, source rect, rect, alpha), alpha on the stack.
+ * Apple ignores the result, so a filter may leave a mark out. */
+SITE(ProgressBar_MarkerBlit_call, SITE_ProgressBar_MarkerBlit_call, CALL, ADDR_BitmapCache_Draw,
+     BL(SITE_ProgressBar_MarkerBlit_call, ADDR_BitmapCache_Draw), 0, 1, 4 | STACK(1), 0)
+
+/* EP0 host-to-device requests with data stage (wLength > 0), on USBDeviceTask:
+ * (usb, length); returns buffer pointer or NULL to stall. */
+SITE(USB_GetControlWriteBuffer_call, SITE_USB_GetControlWriteBuffer_call, CALL,
+     ADDR_USB_GetControlWriteBuffer,
+     BL(SITE_USB_GetControlWriteBuffer_call, ADDR_USB_GetControlWriteBuffer), 0, 1, 2, 0)
+
+/* EP0 host-to-device control write data continuation, on USBDeviceTask:
+ * (usb, short_rem), the unreceived bytes of one EP0 OUT packet.
+ * May arm another packet; a call does not prove the whole transfer completed. */
+SITE(USB_ContinueControlWrite_call, SITE_USB_ContinueControlWrite_call, CALL,
+     ADDR_USB_ContinueControlWrite,
+     BL(SITE_USB_ContinueControlWrite_call, ADDR_USB_ContinueControlWrite), 0, 1, 2, 0)
+
+/* Signal completion on endpoint abort, tail-calling Semaphore_Signal: (semaphore). */
+SITE(USB_AbortEndpoint_Signal_tail, SITE_USB_AbortEndpoint_Signal_tail, TAILCALL,
+     ADDR_Semaphore_Signal,
+     B(SITE_USB_AbortEndpoint_Signal_tail, ADDR_Semaphore_Signal), 0, 1, 1, 0)
+
+/* USB HID interface activation on USBDeviceTask: (hid, high_speed); returns 1 on
+ * success, 0 to retry. */
+SITE(USBHID_Activate_slot, SITE_USBHID_Activate_slot, VTABLE, ADDR_USBHID_Activate,
+     ADDR_USBHID_Activate, 0, 1, 2, 0)
+
+/* USB HID interface deactivation on USBDeviceTask: (hid). */
+SITE(USBHID_Deactivate_slot, SITE_USBHID_Deactivate_slot, VTABLE, ADDR_USBHID_Deactivate,
+     ADDR_USBHID_Deactivate, 0, 1, 1, 0)
+
+/* USB HID EP0 control-write completion on USBDeviceTask: (hid, setup, received);
+ * 0 ACKs with ZLP, -5 defers, other nonzero stalls EP0. */
+SITE(USBHID_HandleControlWrite_slot, SITE_USBHID_HandleControlWrite_slot, VTABLE,
+     ADDR_USBHID_HandleControlWrite, ADDR_USBHID_HandleControlWrite, 0, 1, 3, 0)
+
+/* HID endpoint release on USBDeviceTask before HID frees its buffers: (usb, endpoint). */
+SITE(USBHID_Deactivate_ReleaseEndpoint_call, SITE_USBHID_Deactivate_ReleaseEndpoint_call, CALL,
+     ADDR_USB_ReleaseEndpoint,
+     BL(SITE_USBHID_Deactivate_ReleaseEndpoint_call, ADDR_USB_ReleaseEndpoint), 0, 1, 2, 0)
+
+/* Configuration teardown releases endpoints before interface deactivation: (usb, endpoint). */
+SITE(USB_DeactivateConfiguration_ReleaseEndpoint_call,
+     SITE_USB_DeactivateConfiguration_ReleaseEndpoint_call, CALL, ADDR_USB_ReleaseEndpoint,
+     BL(SITE_USB_DeactivateConfiguration_ReleaseEndpoint_call, ADDR_USB_ReleaseEndpoint),
+     0, 1, 2, 0)
+
+/* Busy endpoint with dispatch disabled: (controller, endpoint, residual). The
+ * device loop checks the result for -3 (pending) before signaling the semaphore. */
+SITE(USB_RunDeviceLoop_ReadTransferResult_call, SITE_USB_RunDeviceLoop_ReadTransferResult_call,
+     CALL, ADDR_USBController_ReadTransferResult,
+     BL(SITE_USB_RunDeviceLoop_ReadTransferResult_call, ADDR_USBController_ReadTransferResult),
+     0, 1, 3, 0)
+
+/* Native HID sender: (hid, buffer, length, flags). Returns bytes sent. */
+SITE(USBHID_SendFramedBytes_slot, SITE_USBHID_SendFramedBytes_slot, VTABLE,
+     ADDR_USBHID_SendFramedBytes, ADDR_USBHID_SendFramedBytes, 0, 1, 4, 0)
+/* Secondary USB HID vtable. The native thunk subtracts eight from its receiver. */
+SITE(USBHID_SendFramedBytes_Adjusted_slot, SITE_USBHID_SendFramedBytes_Adjusted_slot, VTABLE,
+     ADDR_USBHID_SendFramedBytes_Adjusted, ADDR_USBHID_SendFramedBytes_Adjusted, 0, 1, 4, 0)
+
+/* USBDeviceTask poll on timeout and after its wake semaphore: (controller). */
+SITE(USBController_WaitEvent_PollTimeout_call, SITE_USBController_WaitEvent_PollTimeout_call,
+     CALL, ADDR_USBController_Poll,
+     BL(SITE_USBController_WaitEvent_PollTimeout_call, ADDR_USBController_Poll), 0, 1, 1, 0)
+SITE(USBController_WaitEvent_PollWake_call, SITE_USBController_WaitEvent_PollWake_call,
+     CALL, ADDR_USBController_Poll,
+     BL(SITE_USBController_WaitEvent_PollWake_call, ADDR_USBController_Poll), 0, 1, 1, 0)
+
+/* USBDeviceTask resets the controller during shutdown, before final PHY teardown:
+ * (controller, optional speed status). */
+SITE(USBController_Shutdown_Reset_call, SITE_USBController_Shutdown_Reset_call,
+     CALL, ADDR_USBController_Reset,
+     BL(SITE_USBController_Shutdown_Reset_call, ADDR_USBController_Reset), 0, 1, 2, 0)
+
+/* HID and mass storage both configure EP3 IN. Preserve the two stack arguments. */
+SITE(USBHID_Activate_ConfigureEndpoint_call, SITE_USBHID_Activate_ConfigureEndpoint_call,
+     CALL, ADDR_USB_ConfigureEndpoint,
+     BL(SITE_USBHID_Activate_ConfigureEndpoint_call, ADDR_USB_ConfigureEndpoint),
+     0, 1, 4 | STACK(2), 0)
+SITE(USBMassStorage_Activate_ConfigureInEndpoint_call,
+     SITE_USBMassStorage_Activate_ConfigureInEndpoint_call, CALL, ADDR_USB_ConfigureEndpoint,
+     BL(SITE_USBMassStorage_Activate_ConfigureInEndpoint_call, ADDR_USB_ConfigureEndpoint),
+     0, 1, 4 | STACK(2), 0)

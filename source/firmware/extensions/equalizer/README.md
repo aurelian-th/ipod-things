@@ -1,0 +1,24 @@
+# Equalizer
+
+Partly adapted from [RepriseOS](https://github.com/lgreitis/osos-lab/tree/93f6a45/payload), by lgreitis.
+
+Apple's EQ clips: each of its three filter stages rounds to 16 bits, so a preset that boosts distorts loud passages. Equalizer runs the same presets through its own filter chain, which keeps 42 dB of headroom between stages and turns the whole preset down by its peak gain so a boost has room. Every stock preset keeps its sound, only quieter where it would have clipped. A precut by the peak gain still lets loud recordings over in places, because the filters shift the phase of each band differently; a look-ahead limiter at the end of the chain brings those peaks back to full scale instead of clipping them. While a preset filters, the output plays about 0.7 ms late; Off and Flat pass the audio through untouched, and moving between the two blends over about 3 ms.
+
+The EQ list gets a Custom preset after Apple's. Shape it in Settings > Edit EQ, a row that shows while Custom is the preset: the wheel picks a band, Select steps into its parameters and then into editing one, Menu steps back out. Holding Select puts what is highlighted back to its default: a band, or one of its parameters. Every change plays at once; moving the Hold switch shows the response curve of what plays, with the precut applied. Custom, like Flat, is not replaced by a track's own EQ setting. Each of the five bands has:
+
+| Parameter | Range | Default |
+|---|---|---|
+| Type | off, peaking, low shelf, high shelf | low shelf, peaking, high shelf, off, off |
+| Frequency | 20 Hz to 20 kHz | 60 Hz, 1 kHz, 8 kHz, 250 Hz, 4 kHz |
+| Q | 0.3 to 4.0 | 0.7 |
+| Gain | -12 to +12 dB | 0 dB |
+| Precut, for the whole preset | automatic (the chain's peak gain) or fixed down to -10 dB | automatic |
+
+Enabling the extension while music plays applies the fix from the next track or preset change. Disabling it with Custom selected sets the EQ to Off.
+
+| | |
+|---|---|
+| Default | on |
+| Memory | image only |
+| Settings | the Custom preset and whether the Edit EQ row shows |
+| Minimum SDK | 1.66 |

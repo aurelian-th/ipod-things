@@ -1,0 +1,21 @@
+RevolaOS
+Copyright (C) 2026 The RevolaOS Authors. GPL-3.0-only.
+The authors are the contributors recorded in each repository's git history.
+
+The runtime, its headers, the host tests and the packager are adapted from
+the RepriseOS game SDK (https://github.com/lgreitis/osos-lab, game-sdk/ and
+doom/artwork.py at 8fc840d) by lgreitis. Copyright (C) lgreitis and RepriseOS
+contributors. GPL-3.0-only. Modified by the RevolaOS authors since
+2026-11-13.
+
+Files that carry an "Adapted from" or copyright header keep that header.
+
+Third-party work included:
+
+- Khronos OpenGL ES 1.1 and KHR platform headers
+  (https://github.com/KhronosGroup/OpenGL-Registry,
+  https://github.com/KhronosGroup/EGL-Registry): include/. MIT and
+  Apache-2.0.
+
+Apple firmware is never included. The symbols header holds names, types and
+addresses only.

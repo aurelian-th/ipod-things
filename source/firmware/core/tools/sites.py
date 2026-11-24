@@ -1,0 +1,273 @@
+# SPDX-License-Identifier: GPL-3.0-only
+"""Read the core's hook site table from its image and check it against the firmware."""
+
+import re
+import struct
+import subprocess
+from array import array
+from dataclasses import dataclass
+
+from symbols import require
+
+ROW = struct.Struct("<4I4B")
+CALL, VTABLE, ENTRY, ENTRY_NORETURN, WORD, INSERT, TAILCALL = range(7)
+LDR_PC = 0xE51FF004
+RAW_SITE_IDS = 0xFFFFFF00  # RV_RAW_SITE(n) in rv_api.h
+PC = 15
+
+
+@dataclass(frozen=True)
+class Site:
+    address: int
+    original: int
+    word0: int
+    word1: int
+    kind: int
+    chain: int
+    argc: int
+
+    @property
+    def is_entry(self):
+        return self.kind in (ENTRY, ENTRY_NORETURN)
+
+    @property
+    def expected(self):
+        words = (self.word0, self.word1) if self.is_entry else (self.word0,)
+        return b"".join(struct.pack("<I", word) for word in words)
+
+
+def read(code, symbols, core_start):
+    """Rows of core_sites as laid out in the linked image."""
+    count_offset = require(symbols, "core_site_count") - core_start
+    count = struct.unpack_from("<I", code, count_offset)[0]
+    offset = require(symbols, "core_sites") - core_start
+    sites = []
+    for index in range(count):
+        address, original, word0, word1, kind, chain, argc, _ = ROW.unpack_from(
+            code, offset
+        )
+        registers, stack = argc & 15, argc >> 4
+        if kind > TAILCALL or registers > 4 or stack > 2 or chain > 1:
+            raise ValueError(f"Malformed site row at {address:#x}")
+        if stack and registers != 4:
+            raise ValueError(
+                f"Site {address:#x}: stack arguments need four register arguments"
+            )
+        if kind == INSERT and (registers > 3 or chain):
+            raise ValueError(
+                f"Insert site {address:#x}: at most three arguments, no chain"
+            )
+        if kind == TAILCALL and (registers > 3 or stack):
+            raise ValueError(
+                f"Tailcall site {address:#x}: at most three register arguments, no stack"
+            )
+        if kind == TAILCALL:
+            stub_offset = require(symbols, "core_site_stubs") - core_start + 4 * index
+            if stub_offset < 0 or stub_offset + 4 > len(code):
+                raise ValueError(f"Tailcall site {address:#x}: stub table outside core")
+            stub = struct.unpack_from("<I", code, stub_offset)[0]
+            distance = stub - (address + 8)
+            if not stub or stub % 4 or not -0x2000000 <= distance <= 0x1FFFFFC:
+                raise ValueError(
+                    f"Tailcall site {address:#x}: invalid patched branch target"
+                )
+        sites.append(Site(address, original, word0, word1, kind, chain, argc))
+        offset += ROW.size
+    return sites
+
+
+def registers(word):
+    """Registers an ARM instruction reads or writes, or None when it is not allowed
+    to be displaced: branches, coprocessor and software interrupt encodings."""
+    group = (word >> 25) & 7
+    if group in (0, 1):  # data processing, multiply, MRS/MSR, swap, halfword loads
+        used = {(word >> 16) & 15, (word >> 12) & 15}
+        if group == 0:
+            used.add(word & 15)
+            if word & 0x10:
+                used.add((word >> 8) & 15)
+        return used
+    if group in (2, 3):  # load/store word or byte
+        used = {(word >> 16) & 15, (word >> 12) & 15}
+        if group == 3:
+            if word & 0x10:
+                return None  # undefined space
+            used.add(word & 15)
+        return used
+    if group == 4:  # LDM/STM
+        used = {(word >> 16) & 15}
+        if word & (1 << PC):
+            used.add(PC)
+        return used
+    return None
+
+
+def check_entry_word(site, word, image_words=None):
+    if word >> 28 != 0xE:
+        raise ValueError(
+            f"Entry site {site.address:#x}: conditional instruction {word:#010x}"
+        )
+    used = registers(word)
+    if used is None:
+        raise ValueError(
+            f"Entry site {site.address:#x}: branch or system instruction {word:#010x}"
+        )
+    if PC in used:
+        raise ValueError(
+            f"Entry site {site.address:#x}: instruction uses pc {word:#010x}"
+        )
+
+
+def branch_targets_into(image_words, base, target):
+    """True when any B/BL in the image lands on `target`."""
+    for index, word in enumerate(image_words):
+        if (word >> 25) & 7 != 5 or word >> 28 == 0xF:
+            continue
+        offset = word & 0xFFFFFF
+        if offset & 0x800000:
+            offset -= 1 << 24
+        if base + index * 4 + 8 + (offset << 2) == target:
+            return True
+    return False
+
+
+IMAGE_HEADER_SIZE = 0x800
+
+
+def regions(image_size, base, load_offset, iram_base=None):
+    """(address, file offset, bytes) of each part of osos.bin: the DRAM image from
+    `load_offset`, and with `iram_base` the IRAM image between the header and it."""
+    parts = [(base, load_offset, image_size - load_offset)]
+    if iram_base is not None and load_offset > IMAGE_HEADER_SIZE:
+        parts.append((iram_base, IMAGE_HEADER_SIZE, load_offset - IMAGE_HEADER_SIZE))
+    return parts
+
+
+def file_offset(parts, address, size):
+    """Offset in osos.bin of `size` bytes at `address`, and the part holding them."""
+    for part in parts:
+        start, offset, length = part
+        if start <= address and address + size <= start + length:
+            return address - start + offset, part
+    raise ValueError(f"Site outside firmware: {address:#x}")
+
+
+def verify(sites, image=None, base=0x08000000, load_offset=0, iram_base=None):
+    """Reject rows the dispatcher cannot handle; compare with the firmware if given."""
+    seen = set()
+    parts = None
+    if image is not None:
+        parts = regions(len(image), base, load_offset, iram_base)
+        words = {
+            part: array("I", image[part[1] : part[1] + part[2] - part[2] % 4])
+            for part in parts
+        }
+    for site in sites:
+        if site.address % 4:
+            raise ValueError(f"Unaligned site {site.address:#x}")
+        if site.address in seen:
+            raise ValueError(f"Duplicate site {site.address:#x}")
+        seen.add(site.address)
+        if site.is_entry:
+            for word in (site.word0, site.word1):
+                check_entry_word(site, word)
+            if site.chain and site.kind == ENTRY_NORETURN:
+                raise ValueError(
+                    f"Entry site {site.address:#x}: noreturn sites are exclusive"
+                )
+        if site.kind == WORD and site.chain:
+            raise ValueError(f"Word site {site.address:#x} cannot chain")
+        if site.kind == TAILCALL:
+            if site.word1 != 0:
+                raise ValueError(
+                    f"Tailcall site {site.address:#x}: expected single word, got word1 {site.word1:#x}"
+                )
+            if site.word0 >> 24 != 0xEA:
+                raise ValueError(
+                    f"Tailcall site {site.address:#x}: expected unconditional ARM B (0xea), got {site.word0:#010x}"
+                )
+            if site.original % 4 != 0:
+                raise ValueError(
+                    f"Tailcall site {site.address:#x}: unaligned target {site.original:#x}"
+                )
+            offset = site.word0 & 0xFFFFFF
+            if offset & 0x800000:
+                offset -= 1 << 24
+            target = site.address + 8 + (offset << 2)
+            if target != site.original:
+                raise ValueError(
+                    f"Tailcall site {site.address:#x}: decoded branch target {target:#x} != original {site.original:#x}"
+                )
+        if parts is None:
+            continue
+        offset, part = file_offset(parts, site.address, len(site.expected))
+        if image[offset : offset + len(site.expected)] != site.expected:
+            raise ValueError(f"Site {site.address:#x} does not match the firmware")
+        if site.is_entry and branch_targets_into(
+            words[part], part[0], site.address + 4
+        ):
+            raise ValueError(f"Entry site {site.address:#x}: a branch targets entry+4")
+
+
+def fnv1a(text):
+    """The site id extensions bind by: FNV-1a of the sites.def row name."""
+    value = 2166136261
+    for byte in text.encode():
+        value = ((value ^ byte) * 16777619) & 0xFFFFFFFF
+    return value
+
+
+def names(source, firmware, prefix, defines=()):
+    """Row names of sites.def in table order, through the preprocessor so the
+    same conditionals apply as in the core build."""
+    driver = '#define SITE(name, ...) @name\n#include "hooks/sites.def"\n'
+    output = subprocess.run(
+        [
+            prefix + "gcc",
+            "-E",
+            "-P",
+            "-x",
+            "c",
+            *defines,
+            "-I",
+            str(firmware),
+            "-I",
+            str(source),
+            "-",
+        ],
+        input=driver,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout
+    return re.findall(r"@(\w+)", output)
+
+
+def ids(row_names):
+    values = [fnv1a(name) for name in row_names]
+    if len(set(values)) != len(values):
+        raise ValueError("site id collision in sites.def")
+    if any(value >= RAW_SITE_IDS for value in values):
+        raise ValueError("site id in the RV_RAW_SITE range; rename the row")
+    return values
+
+
+def write_id_table(path, row_names):
+    """site_ids.inc for stubs.S: one word per site in table order."""
+    path.write_text("".join(f".word {value:#010x}\n" for value in ids(row_names)))
+
+
+def header(row_names):
+    """rv_sites.h for the SDK."""
+    lines = [
+        "/* SPDX-License-Identifier: GPL-3.0-only */",
+        "/* Generated from core/hooks/sites.def: the ids extensions bind hooks by. */",
+        "#pragma once",
+        "",
+    ]
+    width = max(len(name) for name in row_names)
+    lines += [
+        f"#define RV_SITE_{name.ljust(width)} {value:#010x}"
+        for name, value in zip(row_names, ids(row_names))
+    ]
+    return "\n".join(lines) + "\n"

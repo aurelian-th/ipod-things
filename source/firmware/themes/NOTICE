@@ -1,0 +1,25 @@
+RevolaOS
+Copyright (C) 2026 The RevolaOS Authors. GPL-3.0-only.
+The authors are the contributors recorded in each repository's git history.
+
+Derived from RepriseOS (https://github.com/lgreitis/osos-lab), forked at
+commit 8fc840d591f48aef8b7a0ff8ff20c35cb0d91475, November 2026. Later
+upstream changes are ported individually; each port names its upstream
+commit in the commit message.
+Copyright (C) lgreitis and RepriseOS contributors. GPL-3.0-only.
+Modified by the RevolaOS authors since 2026-11-08.
+RepriseOS's history at the fork point is archived in
+https://github.com/RevolaOS/repriseos-heritage.
+
+Files that carry an "Adapted from" or copyright header keep that header.
+
+Third-party work included or built upon:
+
+- The Classic theme's dark background is RepriseOS's
+  themes/dark/background-dark-image.png by lgreitis (5ec8799). Its dark palette
+  comes from RepriseOS's payload/dark_mode.c (01c89f6) by lgreitis and Alex
+  Ball (alexballvideos-netizen). GPL-3.0-only.
+
+Apple firmware is never included. The catalog records names, sizes, offsets
+and checksums of Apple's bitmaps, never their pixels. Classic's recolour rules
+list the colour values of the Apple bitmaps they recolour, never their pixels.

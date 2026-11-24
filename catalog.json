@@ -503,7 +503,7 @@
           "name": "Manifest.plist",
           "path": "Games/2048/Manifest.plist",
           "bytes": 1478,
-          "sha256": "0fb3d79acd3d922371455684012c38dc92c2cf29b5cdd93191885371c38ba0dc",
+          "sha256": "dd505286ae9d9970efa4fc670654c1515b635fcab6ffcbbc7c02e88da9e15dca",
           "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/2048/Manifest.plist"
         }
       ]
@@ -530,7 +530,7 @@
           "name": "Manifest.plist",
           "path": "Games/doodlejump/Manifest.plist",
           "bytes": 5711,
-          "sha256": "b8a704f16362efff29b860073f62cab3608f242378e56202dd27e77571c0eff2",
+          "sha256": "e30a1c01b51bf6e9e3d334ad0bdfe080333558bdcbce6093ff4409082f0dbda9",
           "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Games/doodlejump/Manifest.plist"
         },
         {

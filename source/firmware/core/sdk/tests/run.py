@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
+"""Check the audio helpers on the host: python3 tests/run.py [SYMBOLS_HEADER]."""
+
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+root = Path(__file__).resolve().parents[1]
+headers = (root / "osos-2.0.5.h", root.parent / "firmware/osos-2.0.5.h")
+header = (
+    Path(sys.argv[1])
+    if len(sys.argv) > 1
+    else next((p for p in headers if p.is_file()), None)
+)
+if header is None or not header.is_file():
+    sys.exit("osos-2.0.5.h not found; pass its path")
+PROGRAMS = ("audio_test",)
+with tempfile.TemporaryDirectory(prefix="rv-extension-tests-") as name:
+    work = Path(name)
+    for program in PROGRAMS:
+        executable = work / program
+        subprocess.run(
+            [
+                os.environ.get("HOST_CC", "cc"),
+                "-std=c11",
+                "-g",
+                "-O1",
+                "-fsanitize=address,undefined",
+                "-fno-sanitize-recover=all",
+                "-Wall",
+                "-Wextra",
+                "-Werror",
+                "-D_FORTIFY_SOURCE=0",
+                "-I" + str(root),
+                "-I" + str(header.parent),
+                str(root / "tests" / (program + ".c")),
+                str(root / "rv_audio.c"),
+                "-o",
+                str(executable),
+            ],
+            check=True,
+        )
+        subprocess.run([str(executable)], check=True)
+print("extension SDK host checks passed")

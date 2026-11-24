@@ -1,0 +1,19 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* Adapted from RepriseOS loader/apple/layout.h (8fc840d) by lgreitis. */
+
+#ifndef APPLE_LAYOUT_H
+#define APPLE_LAYOUT_H
+#include <stdint.h>
+#include "firmware/osos-2.0.5.h"
+
+#define OSOS_STAGE 0x0b000000u
+#define COMPANION_STAGE 0x0bc00000u
+#define BOOTSTRAP_BYTES 0x1f800u
+_Static_assert(BOOTSTRAP_BYTES <= IRAM0_END - IRAM_BASE - 512u, "Crash reservation");
+#define OSOS_HEADER_BYTES 0x800u
+#define OSOS_BODY_CAPACITY 0xb20000u
+#define EXTENSION_BYTES 0xc000u
+#define STAGED_HEADER (OSOS_STAGE + 0xb26000u)
+#define BOOT_BODY_BYTES (*(volatile uint32_t *)0x0bb32000u)
+
+#endif

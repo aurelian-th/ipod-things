@@ -1,0 +1,13 @@
+id = "playback-queue"
+name = "Playback Queue"
+description = "Queue songs, albums, artists or podcast episodes with Play Next or Play Last. View and edit queued items at any time."
+version = "0.1.0"
+author = "0xAu"
+license = "GPL-3.0-only"
+api = "1.59"
+stability = "beta"
+type = "media"
+
+[[module]]
+name = "main"
+trigger = "always"

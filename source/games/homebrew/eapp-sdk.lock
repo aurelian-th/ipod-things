@@ -1,0 +1,3 @@
+# The eapp-sdk repository commit every package builds against; a RevolaOS
+# release builds the packages against a checkout of it.
+commit = "1dc90cd276434665848c9993f76916e51c7d0c2f"

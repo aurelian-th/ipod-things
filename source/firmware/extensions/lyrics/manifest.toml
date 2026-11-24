@@ -1,0 +1,14 @@
+id = "lyrics"
+name = "Lyrics"
+description = "Synced and unsynced .lrc lyrics viewer in song and Now Playing context menus."
+version = "0.2.0"
+author = "0xAu"
+license = "GPL-3.0-only"
+api = "1.73"
+stability = "beta"
+type = "media"
+
+[[module]]
+name = "main"
+trigger = "always"
+

@@ -9,7 +9,7 @@
 	<key>GUID</key>
 	<string>doodlejump</string>
 	<key>Version</key>
-	<string>0.2.0</string>
+	<string>1.3.0</string>
 	<key>HeapSize</key>
 	<integer>5120</integer>
 	<key>UserDataPath</key>

@@ -1,0 +1,6 @@
+# Left out of the release tarball, which `git archive` writes.
+/.github export-ignore
+/.githooks export-ignore
+/.gitignore export-ignore
+/AGENTS.md export-ignore
+/CLAUDE.md export-ignore

@@ -46,10 +46,9 @@ locally to the user's own iPod_38.2.0.5.ipsw image.
 
 Corresponding source (GPL-3.0 Section 6):
 
-This repository publishes plug-and-play binaries, non-distributive recipes,
-and documentation. Complete corresponding source code for RevisionOS core,
-custom extensions, and bundled homebrew is available at
-https://github.com/aurelian-th/ipod and via upstream RevolaOS / RepriseOS
-repositories. A written offer to provide corresponding source code on request
-remains valid under the terms of GNU GPL v3.
+Complete corresponding source code for RevisionOS core, extensions, themes,
+bundled homebrew, host recipe tooling, and the RevisionOS Installer is included
+directly in this repository under source/, along with upstream RevolaOS and
+RepriseOS repositories. A written offer to provide corresponding source code on
+request remains valid under the terms of GNU GPL v3.
 

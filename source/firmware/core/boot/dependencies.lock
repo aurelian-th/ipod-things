@@ -1,0 +1,10 @@
+{
+  "rockbox": {
+    "url": "https://github.com/Rockbox/rockbox.git",
+    "commit": "f17046eee12aa3bf9e7a6ad2ae653abf55ecb520",
+    "patches": [
+      "boot/rockbox/0001-cfw-file-boot.patch",
+      "boot/rockbox/0002-nested-fat32.patch"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+# Build and cache outputs (mainly under source/)
+source/**/.build/
+source/**/build/
+source/**/dist/
+source/**/target/
+source/**/node_modules/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+*.o
+.DS_Store
+

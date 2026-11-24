@@ -1,0 +1,364 @@
+# SPDX-License-Identifier: GPL-3.0-only
+"""The compiled manifest layout and the rules manifest.toml must follow."""
+
+import re
+import struct
+import unittest
+from pathlib import Path
+
+import manifest
+
+DOCUMENT = {
+    "id": "hello_world",
+    "name": "Hello World",
+    "description": "Says hello",
+    "version": "0.1.0",
+    "author": "Paul",
+    "license": "GPL-3.0-only",
+    "api": "1.2",
+    "module": [
+        {"name": "main", "trigger": "always"},
+        {"name": "editor", "trigger": "screen", "screens": ["editor", "x"]},
+        {"name": "dsp", "trigger": "manual"},
+    ],
+}
+
+
+def strings(data, start, offset):
+    end = data.index(b"\0", start + offset)
+    return data[start + offset : end].decode()
+
+
+class ManifestTests(unittest.TestCase):
+    def test_header_modules_and_strings(self):
+        data = manifest.compile_manifest(DOCUMENT)
+        magic, version, api, flags, count, sites, bytes_, *texts, content, folders = (
+            manifest.HEADER.unpack_from(data)
+        )
+        self.assertEqual(
+            (magic, version, api, flags, count, sites),
+            (0x464D5652, 3, 0x10002, 0, 3, 0),
+        )
+        table = manifest.HEADER.size + count * manifest.MODULE.size
+        self.assertEqual(len(data), table + bytes_)
+        self.assertEqual(
+            [strings(data, table, t) for t in texts],
+            [
+                "hello_world",
+                "Hello World",
+                "Says hello",
+                "0.1.0",
+                "Paul",
+                "GPL-3.0-only",
+                "",
+            ],
+        )
+        self.assertEqual((content, folders), (0, 0))
+        modules = [
+            manifest.MODULE.unpack_from(
+                data, manifest.HEADER.size + i * manifest.MODULE.size
+            )
+            for i in range(count)
+        ]
+        name, trigger, screens, first, preload, reserved = modules[1]
+        self.assertEqual(
+            (strings(data, table, name), trigger, screens, preload, reserved),
+            ("editor", 1, 2, 1, 0),
+        )
+        self.assertEqual(strings(data, table, first), "editor")
+        after = first + len("editor") + 1
+        self.assertEqual(strings(data, table, after), "x")
+        self.assertEqual(modules[0][1:3], (0, 0))
+        self.assertEqual(modules[2][1:3], (2, 0))
+        # main carries always, the others optional unless the manifest says
+        self.assertEqual([m[4] for m in modules], [0, 1, 1])
+
+    def test_note(self):
+        data = manifest.compile_manifest({**DOCUMENT, "note": "Adapted from X"})
+        header = manifest.HEADER.unpack_from(data)
+        table = manifest.HEADER.size + header[4] * manifest.MODULE.size
+        self.assertEqual(strings(data, table, header[13]), "Adapted from X")
+        with self.assertRaises(ValueError):
+            manifest.compile_manifest({**DOCUMENT, "note": 1})
+
+    def test_content_folders(self):
+        def folders(document):
+            data = manifest.compile_manifest(document)
+            header = manifest.HEADER.unpack_from(data)
+            table = manifest.HEADER.size + header[4] * manifest.MODULE.size
+            names = []
+            offset = header[14]
+            for _ in range(header[15]):
+                names.append(strings(data, table, offset))
+                offset += len(names[-1]) + 1
+            return names
+
+        self.assertEqual(folders({**DOCUMENT, "content": "Themes"}), ["Themes"])
+        self.assertEqual(
+            folders({**DOCUMENT, "content": ["Games", "Apps"]}), ["Games", "Apps"]
+        )
+        cases = {
+            "lower case": "themes",
+            "slash": "Themes/Dark",
+            "too long": "Themesthemesthemes",
+            "too short": "A",
+            "capital inside": "ThemeS",
+            "reserved": "Data",
+            "number": 7,
+            "repeated": ["Themes", "Themes"],
+            "too many": ["A1", "B1", "C1", "D1", "E1"],
+        }
+        for name, content in cases.items():
+            with self.subTest(name), self.assertRaises(ValueError):
+                manifest.compile_manifest({**DOCUMENT, "content": content})
+
+    def test_reserved_id(self):
+        with self.assertRaises(ValueError):
+            manifest.compile_manifest({**DOCUMENT, "id": "revola"})
+
+    def test_reserved_folders_match_loader(self):
+        source = (
+            Path(__file__).resolve().parents[2] / "core/loader/loader.c"
+        ).read_text()
+        start = source.index("core_folders[] = {")
+        body = source[start : source.index("};", start)]
+        self.assertEqual(
+            set(re.findall(r'"([A-Za-z]+)"', body)), manifest.CONTENT_RESERVED
+        )
+
+    def test_stability_flag(self):
+        def flags(document):
+            return struct.unpack_from("<I", manifest.compile_manifest(document), 12)[0]
+
+        self.assertEqual(flags(DOCUMENT), 0)
+        for value, bits in (("alpha", 1), ("beta", 2), ("stable", 3)):
+            with self.subTest(value):
+                self.assertEqual(
+                    flags({**DOCUMENT, "stability": value}),
+                    bits,
+                )
+
+    def test_type_flag(self):
+        def flags(document):
+            return struct.unpack_from("<I", manifest.compile_manifest(document), 12)[0]
+
+        for value, code in (
+            ("audio", 1),
+            ("customization", 2),
+            ("media", 3),
+            ("utility", 4),
+            ("connectivity", 5),
+            ("developer", 6),
+        ):
+            with self.subTest(value):
+                self.assertEqual(
+                    flags({**DOCUMENT, "stability": "stable", "type": value}),
+                    3 | (code << 2),
+                )
+        with self.assertRaises(ValueError):
+            manifest.compile_manifest({**DOCUMENT, "type": "unknown"})
+
+    def test_raw_sites(self):
+        site = {
+            "name": "clear",
+            "address": 0x08001000,
+            "kind": "call",
+            "expected": 0xEB000010,
+            "argc": 2,
+        }
+        word = {"name": "limit", "address": 0x08002000, "kind": "word", "expected": 7}
+        data = manifest.compile_manifest({**DOCUMENT, "site": [site, word]})
+        count, sites, bytes_ = manifest.HEADER.unpack_from(data)[4:7]
+        self.assertEqual(sites, 2)
+        start = manifest.HEADER.size
+        table = start + sites * manifest.SITE.size + count * manifest.MODULE.size
+        self.assertEqual(len(data), table + bytes_)
+        address, expected, kind, argc, name = manifest.SITE.unpack_from(data, start)
+        self.assertEqual(
+            (address, expected, kind, argc), (0x08001000, 0xEB000010, 0, 2)
+        )
+        self.assertEqual(strings(data, table, name), "clear")
+        self.assertEqual(
+            manifest.SITE.unpack_from(data, start + manifest.SITE.size)[:4],
+            (0x08002000, 7, 4, 0),
+        )
+
+    def test_rejects_invalid_sites(self):
+        site = {
+            "name": "clear",
+            "address": 0x08001000,
+            "kind": "call",
+            "expected": 0xEB000010,
+            "argc": 2,
+        }
+        cases = {
+            "entry kind": {"kind": "entry"},
+            "insert kind": {"kind": "insert"},
+            "chain": {"chain": 1},
+            "unaligned": {"address": 0x08001002},
+            "outside the image": {"address": 0x08B40000},
+            "call without BL": {"expected": 0xE1A00000},
+            "five arguments": {"argc": 5},
+            "word with arguments": {"kind": "word", "argc": 1},
+            "no name": {"name": ""},
+        }
+        for name, change in cases.items():
+            with self.subTest(name), self.assertRaises(ValueError):
+                manifest.compile_manifest({**DOCUMENT, "site": [{**site, **change}]})
+        with self.assertRaises(ValueError):
+            manifest.compile_manifest(
+                {**DOCUMENT, "site": [site, {**site, "name": "b"}]}
+            )
+        with self.assertRaises(ValueError):
+            manifest.compile_manifest(
+                {
+                    **DOCUMENT,
+                    "site": [
+                        {**site, "name": f"s{i}", "address": 0x08001000 + 4 * i}
+                        for i in range(9)
+                    ],
+                }
+            )
+
+    def test_rejects_invalid_documents(self):
+        main = DOCUMENT["module"][0]
+        cases = {
+            "upper-case id": {"id": "Hello"},
+            "long id": {"id": "a" * 33},
+            "license": {"license": "Proprietary"},
+            "missing author": {"author": None},
+            "no modules": {"module": []},
+            "main not first": {"module": [DOCUMENT["module"][2], main]},
+            "second always": {"module": [main, {"name": "b", "trigger": "always"}]},
+            "trigger": {"module": [main, {"name": "b", "trigger": "playback"}]},
+            "screens without trigger": {
+                "module": [main, {"name": "b", "trigger": "manual", "screens": ["s"]}]
+            },
+            "preload on main": {"module": [{**main, "preload": "always"}]},
+            "preload unknown on a screen module": {
+                "module": [
+                    main,
+                    {
+                        "name": "b",
+                        "trigger": "screen",
+                        "screens": ["s"],
+                        "preload": "soon",
+                    },
+                ]
+            },
+            "screen trigger without screens": {
+                "module": [main, {"name": "b", "trigger": "screen"}]
+            },
+            "repeated module": {
+                "module": [main, {"name": "main", "trigger": "manual"}]
+            },
+            "stability": {"stability": "experimental"},
+            "module name": {
+                "module": [main, {"name": "Bad Name", "trigger": "manual"}]
+            },
+            "api minor too large": {"api": "1.65536"},
+            "api not major.minor": {"api": "1"},
+            "unknown key": {"homepage": "https://example.org"},
+            "unknown module key": {"module": [{**main, "lazy": True}]},
+            "screens as text": {
+                "module": [main, {"name": "b", "trigger": "screen", "screens": "s"}]
+            },
+            "too large": {"description": "x" * 1100},
+        }
+        for name, change in cases.items():
+            document = {**DOCUMENT, **change}
+            if change.get("author", "") is None:
+                del document["author"]
+            with self.subTest(name), self.assertRaises(ValueError):
+                manifest.compile_manifest(document)
+
+    def test_assets_defaults_and_order(self):
+        document = {
+            **DOCUMENT,
+            "asset": [
+                {"name": "eq-icon", "file": "assets/eq.png", "pane": "icon"},
+                {"name": "table", "file": "table.bin", "preload": "always"},
+                {"name": "song", "file": "a.mp3", "compress": False},
+                {"name": "notes", "file": "notes.bin"},
+            ],
+        }
+        self.assertEqual(
+            manifest.assets(document),
+            [
+                {
+                    "name": "eq-icon",
+                    "file": "assets/eq.png",
+                    "preload": "optional",
+                    "compress": True,
+                    "pane": "icon",
+                },
+                {
+                    "name": "table",
+                    "file": "table.bin",
+                    "preload": "always",
+                    "compress": True,
+                    "pane": None,
+                },
+                {
+                    "name": "song",
+                    "file": "a.mp3",
+                    "preload": "never",
+                    "compress": False,
+                    "pane": None,
+                },
+                {
+                    "name": "notes",
+                    "file": "notes.bin",
+                    "preload": "optional",
+                    "compress": True,
+                    "pane": None,
+                },
+            ],
+        )
+        self.assertEqual(manifest.assets(DOCUMENT), [])
+
+    def test_module_preload_classes(self):
+        main = DOCUMENT["module"][0]
+        modules = [
+            main,
+            {"name": "s", "trigger": "screen", "screens": ["s"]},
+            {"name": "t", "trigger": "screen", "screens": ["t"], "preload": "never"},
+            {"name": "u", "trigger": "screen", "screens": ["u"], "preload": "always"},
+            {"name": "m", "trigger": "manual"},
+            {"name": "n", "trigger": "manual", "preload": "never"},
+        ]
+        data = manifest.compile_manifest({**DOCUMENT, "module": modules})
+        classes = [
+            manifest.MODULE.unpack_from(
+                data, manifest.HEADER.size + i * manifest.MODULE.size
+            )[4]
+            for i in range(len(modules))
+        ]
+        self.assertEqual(classes, [0, 1, 2, 0, 1, 2])
+
+    def test_rejects_invalid_assets(self):
+        good = {"name": "icon", "file": "icon.png"}
+        cases = {
+            "name": [{**good, "name": "Icon"}],
+            "long name": [{**good, "name": "x" * 32}],
+            "repeated": [good, good],
+            "no file": [{"name": "icon"}],
+            "preload not a class": [{**good, "preload": True}],
+            "preload unknown": [{**good, "preload": "sometimes"}],
+            "preloaded uncompressed": [
+                {
+                    "name": "song",
+                    "file": "a.mp3",
+                    "compress": False,
+                    "preload": "always",
+                }
+            ],
+            "unknown key": [{**good, "kind": "bitmap"}],
+            "uncompressed bitmap": [{**good, "compress": False}],
+            "pane data": [{"name": "song", "file": "a.mp3", "pane": "picture"}],
+            "unknown pane": [{**good, "pane": "games"}],
+            "old menu key": [{**good, "menu": True}],
+        }
+        for name, assets in cases.items():
+            with self.subTest(name), self.assertRaises(ValueError):
+                manifest.assets({**DOCUMENT, "asset": assets})

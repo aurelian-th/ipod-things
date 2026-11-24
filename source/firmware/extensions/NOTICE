@@ -1,0 +1,30 @@
+RevolaOS
+Copyright (C) 2026 The RevolaOS Authors. GPL-3.0-only.
+The authors are the contributors recorded in each repository's git history.
+
+Derived from RepriseOS (https://github.com/lgreitis/osos-lab), forked at
+commit 8fc840d591f48aef8b7a0ff8ff20c35cb0d91475, November 2026. Later
+upstream changes are ported individually; each port names its upstream
+commit in the commit message.
+Copyright (C) lgreitis and RepriseOS contributors. GPL-3.0-only.
+Modified by the RevolaOS authors since 2026-11-08.
+RepriseOS's history at the fork point is archived in
+https://github.com/RevolaOS/repriseos-heritage.
+
+Files that carry an "Adapted from" or copyright header keep that header.
+
+Third-party work included or built upon:
+
+- PodBox (https://github.com/anthonyfletcher/podbox): iAP2 packet framing and
+  HID reassembly reference, firmware/usbstack/usb_iap2.c at
+  7a89c33d0ed49c93ba49a8198e822b8adb72d0a5. GPL-2.0-or-later;
+  the adapted iap2/protocol implementation is GPL-3.0-only.
+- Rockbox (https://github.com/Rockbox/rockbox): the crossfeed filters, the
+  channel modes and the compressor. GPL-2.0-or-later.
+- Cupertino Icons (https://github.com/flutter/packages): the Appearance
+  Settings glyphs. MIT, see appearance/assets/LICENSE.cupertino-icons.
+- The Classic theme's dark background, carried by the Appearance extension, is
+  RepriseOS's themes/dark/background-dark-image.png by lgreitis (5ec8799).
+  GPL-3.0-only.
+
+Apple firmware is never included. Builds read it from the user's own IPSW.

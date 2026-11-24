@@ -1,0 +1,216 @@
+# SPDX-License-Identifier: GPL-3.0-only
+"""Site table decoding and the entry-site rules the dispatcher relies on."""
+
+import struct
+import unittest
+
+import sites
+from sites import CALL, ENTRY, ENTRY_NORETURN, INSERT, TAILCALL, VTABLE, WORD, Site
+
+BASE = 0x08000000
+PUSH_LR = 0xE92D4010  # push {r4, lr}
+MOV_R4_R0 = 0xE1A04000
+BL_ANY = 0xEB000000
+
+
+def site(address, kind, word0, word1=0, chain=0, argc=1, original=0):
+    return Site(address, original, word0, word1, kind, chain, argc)
+
+
+def image(words, size=256):
+    body = bytearray(size)
+    for address, word in words.items():
+        struct.pack_into("<I", body, address - BASE, word)
+    return bytes(body)
+
+
+class SiteTests(unittest.TestCase):
+    def test_reads_rows_from_the_linked_image(self):
+        rows = [
+            sites.ROW.pack(BASE + 8, 0x08B3C001, 0xEB000001, 0, CALL, 1, 2, 0),
+            sites.ROW.pack(BASE + 16, 0, 0xE1A00000, PUSH_LR, ENTRY, 0, 1, 0),
+        ]
+        code = struct.pack("<I", 2) + b"".join(rows)
+        symbols = {"core_site_count": 0x1000, "core_sites": 0x1004}
+        table = sites.read(code, symbols, 0x1000)
+        self.assertEqual(
+            table,
+            [
+                Site(BASE + 8, 0x08B3C001, 0xEB000001, 0, CALL, 1, 2),
+                Site(BASE + 16, 0, 0xE1A00000, PUSH_LR, ENTRY, 0, 1),
+            ],
+        )
+        self.assertEqual(table[1].expected, struct.pack("<II", 0xE1A00000, PUSH_LR))
+        for row in (
+            sites.ROW.pack(BASE, 0, 0, 0, 7, 0, 1, 0),
+            sites.ROW.pack(
+                BASE, 0, 0, 0, INSERT, 0, 4, 0
+            ),  # four arguments need the stack
+            sites.ROW.pack(BASE, 0, 0, 0, INSERT, 1, 2, 0),  # exclusive by construction
+            sites.ROW.pack(
+                BASE, 0, 0, 0, CALL, 0, 0x13, 0
+            ),  # stack words need four registers
+            sites.ROW.pack(BASE, 0, 0, 0, CALL, 0, 0x34, 0),  # at most two stack words
+            sites.ROW.pack(BASE, 0, 0, 0, TAILCALL, 0, 4, 0),
+            sites.ROW.pack(BASE, 0, 0, 0, TAILCALL, 0, 0x11, 0),
+        ):
+            with self.subTest(row=row), self.assertRaises(ValueError):
+                sites.read(struct.pack("<I", 1) + row, symbols, 0x1000)
+        stacked = struct.pack("<I", 1) + sites.ROW.pack(BASE, 0, 0, 0, CALL, 0, 0x24, 0)
+        self.assertEqual(sites.read(stacked, symbols, 0x1000)[0].argc, 0x24)
+
+    def test_validates_tailcall_sites(self):
+        target = BASE + 64
+        site_addr = BASE + 8
+        b_inst = 0xEA000000 | (((target - site_addr - 8) >> 2) & 0xFFFFFF)
+        good_table = [
+            site(site_addr, TAILCALL, b_inst, original=target, chain=1, argc=1)
+        ]
+        sites.verify(good_table, image({site_addr: b_inst}), BASE)
+
+        # Reject non-unconditional B: conditional B (BEQ), BL, BLX, MOV
+        beq_inst = 0x0A000000 | (((target - site_addr - 8) >> 2) & 0xFFFFFF)
+        bl_inst = 0xEB000000 | (((target - site_addr - 8) >> 2) & 0xFFFFFF)
+        blx_inst = 0xFA000000 | (((target - site_addr - 8) >> 2) & 0xFFFFFF)
+        for bad_op in (beq_inst, bl_inst, blx_inst, 0xE1A00000):
+            with (
+                self.subTest(bad_op=hex(bad_op)),
+                self.assertRaisesRegex(ValueError, "expected unconditional ARM B"),
+            ):
+                sites.verify([site(site_addr, TAILCALL, bad_op, original=target)])
+
+        # Reject decoded target mismatch
+        with self.assertRaisesRegex(ValueError, "decoded branch target"):
+            sites.verify([site(site_addr, TAILCALL, b_inst, original=target + 4)])
+
+        # Reject unaligned original address
+        with self.assertRaisesRegex(ValueError, "unaligned target"):
+            sites.verify([site(site_addr, TAILCALL, b_inst, original=target + 1)])
+
+        # Reject non-zero second word
+        with self.assertRaisesRegex(ValueError, "expected single word"):
+            sites.verify(
+                [site(site_addr, TAILCALL, b_inst, word1=0xE1A00000, original=target)]
+            )
+
+        # Reject out-of-range branch target (+32MB limit)
+        far_target = site_addr + 8 + 0x2000000
+        far_b = 0xEA000000 | (((far_target - site_addr - 8) >> 2) & 0xFFFFFF)
+        with self.assertRaisesRegex(ValueError, "decoded branch target"):
+            sites.verify([site(site_addr, TAILCALL, far_b, original=far_target)])
+
+    def test_tailcall_checks_the_linked_stub_target(self):
+        address, target = BASE + 8, BASE + 64
+        instruction = 0xEA000000 | (((target - address - 8) >> 2) & 0xFFFFFF)
+        row = sites.ROW.pack(address, target, instruction, 0, TAILCALL, 1, 1, 0)
+        symbols = {
+            "core_site_count": 0x1000,
+            "core_sites": 0x1004,
+            "core_site_stubs": 0x1004 + sites.ROW.size,
+        }
+
+        def linked(stub):
+            return struct.pack("<I", 1) + row + struct.pack("<I", stub)
+
+        table = sites.read(linked(BASE + 128), symbols, 0x1000)
+        sites.verify(table)
+        for stub in (0, BASE + 129, address + 8 + 0x2000000, address + 8 - 0x2000004):
+            with (
+                self.subTest(stub=stub),
+                self.assertRaisesRegex(ValueError, "invalid patched branch target"),
+            ):
+                sites.read(linked(stub), symbols, 0x1000)
+        with self.assertRaisesRegex(ValueError, "stub table outside core"):
+            sites.read(linked(BASE + 128)[:-1], symbols, 0x1000)
+
+    def test_matches_expected_words_against_the_firmware(self):
+        table = [site(BASE + 8, CALL, 0xEB000001), site(BASE + 16, VTABLE, 0x08123456)]
+        good = image({BASE + 8: 0xEB000001, BASE + 16: 0x08123456})
+        sites.verify(table, good, BASE)
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            sites.verify(table, image({BASE + 8: 0xEB000001}), BASE)
+        with self.assertRaisesRegex(ValueError, "outside"):
+            sites.verify([site(BASE + 512, WORD, 0)], good, BASE)
+        for table in (
+            [site(BASE + 8, CALL, 0), site(BASE + 8, CALL, 0)],
+            [site(BASE + 2, CALL, 0)],
+            [site(BASE + 8, WORD, 0, chain=1)],
+            [site(BASE + 8, ENTRY_NORETURN, PUSH_LR, MOV_R4_R0, chain=1)],
+        ):
+            with self.subTest(table=table), self.assertRaises(ValueError):
+                sites.verify(table)
+
+    def test_rejects_entry_words_the_replay_stub_cannot_run(self):
+        cases = {
+            "conditional": 0x01A04000,  # moveq r4, r0
+            "branch": BL_ANY,
+            "pc as rd": 0xE1A0F000,  # mov pc, r0
+            "pc as rn": 0xE59F1010,  # ldr r1, [pc, #16]
+            "pc as rm": 0xE1A0400F,  # mov r4, pc
+            "pc as rs": 0xE1A04F10,  # mov r4, r0, lsl pc
+            "ldm with pc": 0xE8BD8010,  # pop {r4, pc}
+            "ldm from pc": 0xE89F0010,  # ldm pc, {r4}
+            "coprocessor": 0xEE070F15,
+            "swi": 0xEF000000,
+        }
+        for name, word in cases.items():
+            with self.subTest(name), self.assertRaises(ValueError):
+                sites.verify([site(BASE + 8, ENTRY, PUSH_LR, word)])
+        sites.verify([site(BASE + 8, ENTRY, PUSH_LR, MOV_R4_R0)])
+        sites.verify([site(BASE + 8, ENTRY, 0xE3A01000, PUSH_LR)])  # mov r1, #0
+
+    def test_rejects_entries_with_a_branch_into_the_second_word(self):
+        entry = BASE + 64
+        words = {entry: PUSH_LR, entry + 4: MOV_R4_R0}
+        table = [site(entry, ENTRY, PUSH_LR, MOV_R4_R0)]
+        sites.verify(table, image(words), BASE)
+        # b entry+4 from BASE+128: offset = (entry+4 - (BASE+128) - 8) >> 2
+        words[BASE + 128] = 0xEA000000 | (
+            (((entry + 4) - (BASE + 128) - 8) >> 2) & 0xFFFFFF
+        )
+        with self.assertRaisesRegex(ValueError, "entry\\+4"):
+            sites.verify(table, image(words), BASE)
+        # a blx-immediate (cond 0xF) to the same place is not a branch Apple code resumes from
+        words[BASE + 128] |= 0xF0000000
+        sites.verify(table, image(words), BASE)
+
+    def test_maps_iram_sites_to_the_image_after_the_header(self):
+        iram, load_offset = 0x22000000, 0x800 + 64
+        body = bytearray(load_offset + 64)
+        entry = iram + 16
+        struct.pack_into("<II", body, 0x800 + 16, PUSH_LR, MOV_R4_R0)
+        struct.pack_into("<I", body, load_offset + 8, 0xEB000001)
+        table = [
+            site(entry, ENTRY, PUSH_LR, MOV_R4_R0),
+            site(BASE + 8, CALL, 0xEB000001),
+        ]
+        sites.verify(table, bytes(body), BASE, load_offset, iram)
+        with self.assertRaisesRegex(ValueError, "outside"):
+            sites.verify(table, bytes(body), BASE, load_offset)
+        with self.assertRaisesRegex(ValueError, "outside"):
+            sites.verify(
+                [site(iram + 64, CALL, 0)], bytes(body), BASE, load_offset, iram
+            )
+        # b entry+4 from iram+32, inside the IRAM image
+        struct.pack_into(
+            "<I",
+            body,
+            0x800 + 32,
+            0xEA000000 | ((((entry + 4) - (iram + 32) - 8) >> 2) & 0xFFFFFF),
+        )
+        with self.assertRaisesRegex(ValueError, "entry\\+4"):
+            sites.verify(table, bytes(body), BASE, load_offset, iram)
+
+
+class SiteIdTests(unittest.TestCase):
+    def test_ids_hash_names_and_reject_collisions(self):
+        self.assertEqual(sites.fnv1a("core"), 0xDD5E607E)
+        self.assertEqual(sites.ids(["a", "b"]), [sites.fnv1a("a"), sites.fnv1a("b")])
+        with self.assertRaises(ValueError):
+            sites.ids(["a", "a"])
+        header = sites.header(["Preferences_LoadFile_call"])
+        self.assertIn(
+            f"#define RV_SITE_Preferences_LoadFile_call "
+            f"{sites.fnv1a('Preferences_LoadFile_call'):#010x}",
+            header,
+        )

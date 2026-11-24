@@ -1,0 +1,18 @@
+id = "iap2"
+name = "Car Audio"
+description = "Switch USB car protocol between iAP1 (older cars and docks) and iAP2 (modern cars with digital audio, artwork, and library sync)."
+version = "1.0.0"
+author = "0xAu"
+license = "GPL-3.0-only"
+api = "1.74"
+stability = "stable"
+type = "connectivity"
+
+[[module]]
+name = "main"
+trigger = "always"
+
+[[asset]]
+name = "settings-car"
+file = "assets/settings-car.png"
+pane = "icon"

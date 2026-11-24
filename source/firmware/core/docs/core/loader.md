@@ -1,0 +1,62 @@
+# Extension loader
+
+An extension is one file, `/Revola/Extensions/<id>.rvx`. Installing, sharing and removing it is copying or deleting that file. `core/loader/loader.c` reads the files, loads modules into the Apple heap, binds their hooks and unloads them again.
+
+## The `.rvx` file
+
+`tools/rvx.py` (the SDK's `rvx-pack`) reads `manifest.toml` through `tools/manifest.py` and writes the manifest, every module and every asset into one file. The layout is in `core/loader/rvx.h`, in the order the core reads it.
+
+| Part | Contents |
+|---|---|
+| Header | format, core API major, firmware build id; the loader refuses any mismatch |
+| Manifest | id, name, description, version, author, license, API, stability, note, content folders, modules, raw sites, assets; the format is described at the top of `tools/manifest.py` |
+| Catalog | one entry per module and asset: module i is entry i, then the assets by preload class, `always` first, `never` last |
+| Payloads | the main module image with its relocation table, the assets that may be preloaded, the modules that may be kept, the other modules, the other assets |
+
+A module image is read into one block of the Apple heap, text, data and bss in a row. The relocation table is consumed through the stack in chunks, so a loaded module costs text + data + bss plus an 8-byte owner header. Every block the loader or `api->alloc` hands out carries that header, which is what makes the live and peak figures exact.
+
+## Boot scan
+
+`core_loader_boot` runs in `core_preferences_init` after the settings store loaded. It lists the `.rvx` files once, in a heap block as long as the folder, freed when the scan ends, reads each manifest and keeps nothing for a disabled extension. An extension is enabled when the store says so (key 0 under its id hash) or, with no store value, when its id is in `loader/bundled.def`, the first-party extensions that are on after install. The bundled extensions load first, so a content folder or a site that one of them and another extension both claim goes to the bundled one, whatever the file names. For an enabled one it allocates a record holding the manifest and loads the main module. The module's entry returns the descriptor, whose hooks are bound in order. A collision unbinds what was bound, drops the image and leaves the failure and the site id on the record for Settings > Extensions.
+
+## Identity
+
+The FAT file name is only used to build paths. Identity is the manifest id, and its hash is the settings owner, because a short name may come back in upper case. Renaming a file keeps its settings. Of several files with the same id, the one named after it loads, else the first found; Settings > Extensions lists the others as Duplicate.
+
+## Lifecycle
+
+| Module trigger | Loads | Unloads |
+|---|---|---|
+| `always` (the main module) | while the extension is enabled | when it is disabled |
+| `manual` | `api->module_load` | `api->module_unload`, or when Optimize stops keeping it and the extension does not hold it |
+| `screen` | when a push looks up one of the screen ids its manifest entry lists (`core_loader_screen`) | ten ticks after the last of its screens was popped, unless its `preload` class keeps it |
+
+A module after main whose `preload` class Optimize keeps (`always`, or `optional` under Performance; see Assets below) is loaded right after main and kept while the extension is loaded: the grace tick does not age it, and `module_unload` only releases the extension's hold. The class is in the manifest's module record, beside the trigger; the catalog entry of a module carries `always`.
+
+Every module may return a descriptor. The core binds and registers a non-main module's hooks and screens when it loads and drops them when it unloads, keeping its screen records stale so the next load reuses their ids. Screen lookups and open counts are per extension. A descriptor's `service` pointer is handed to the extension's other modules by `module_service` while the module is loaded.
+
+Unloading an extension calls the main module's `unload` first, while its other modules are still loaded, then unloads the modules from the highest index down to main.
+
+Disabling marks the record; the next grace tick unloads it. Code and hook storage are retired and freed two ticks after unbind, when no task can still be inside them. Images are owned by the Apple heap, so a reload reuses the same addresses and the heap totals return to where they were. The self-test checks this.
+
+## Rescan after disk mode
+
+When USB disk mode ends (site `DiskModeExit_PopToMainScreen_call`, before the main menu returns), the core scans `/Revola/Extensions/` again. An extension whose file is gone, is now a duplicate or has changed (the header's body hash differs) unloads; enabled files without a record load. A changed extension loads into a new id block, because Apple keeps `ITEM` tables and built screens by id. The old block stays unused until the next boot.
+
+## Assets
+
+Assets are named bytes in the file: bitmaps, converted from PNG by `tools/bitmap.py`, and data. Bitmaps are always lz-compressed (`core/loader/lz.c`, 4 KB window). Data is compressed unless the manifest says `compress = false`; anything lz cannot shrink is stored raw.
+
+The `preload` class of an asset, and of every module after main, says what is kept with main:
+
+| `preload` | Where it lives |
+|---|---|
+| `always` | an asset is read into one block with the main module, as stored, so using it needs no disk access; a module is loaded with main and kept |
+| `optional` | the same when Optimize prefers speed over memory, else on disk; the default |
+| `never` | an asset is found by streaming the catalog through the stack when asked for; a module loads as its trigger says; the default for `compress = false` data |
+
+Settings > Extensions > Optimize decides the `optional` class (`CORE_KEY_OPTIMIZE`): Performance preloads it, so an extension whose modules and assets are all `always` or `optional` never makes the disk spin up after boot; Memory leaves it on disk and keeps RAM use at its minimum; Auto picks Performance on a hard disk, where every read costs a spin-up, and Memory on flash. Changing it, or an asset provider binding or releasing, reads every loaded extension's preloaded block again at the next grace tick, from the file as it is, and loads the modules now kept; a file that is gone or changed leaves its assets on disk, and a kept module that fails to load stays on disk and loads on request. A bitmap the provider replaces is preloaded in the provider's stored form instead (`CORE_PRELOADED_PROVIDED`), counted to the owner, so a themed icon costs no disk read either; `asset_load` and `asset_read` still read the extension's own bytes from the file for it. A preloaded block that does not fit leaves the assets on disk; the extension still loads.
+
+Not yet done: Auto does not weigh heap pressure from the library (worth adding once a preloaded set measures in the hundreds of KB; the first-party icons are about 12 KB together), and an extension loaded before the provider binds at boot has its icons read twice.
+
+`api->asset_load` decodes a copy; `api->asset_read` reads part of a raw one. Bitmaps are decoded in `core/ui/bitmaps.c`. A pane bitmap (an icon, the stock 78 x 121 coverage mask, or a picture of one of the pane sizes) and the pane's badge decode into one block each that lives until Apple asks for the next one, because Apple keeps drawing the last pane bitmap. Canvas bitmaps decode into blocks held while their canvas is open. Every block is counted to its extension.

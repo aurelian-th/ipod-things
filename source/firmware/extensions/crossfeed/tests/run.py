@@ -1,0 +1,717 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
+"""Run the host tests with a staged SDK: python3 tests/run.py SDK.
+
+The reference models follow Rockbox lib/rbcodec/dsp/crossfeed.c and
+dsp_filter.c (Copyright (C) 2006-2007 Thom Johansen, 2010 Bertrik Sikken, 2012
+Michael Sevakis). Modified by the RevolaOS authors, 2026. Rockbox is
+GPL-2.0-or-later; this version is GPL-3.0-only.
+"""
+
+import copy
+import ctypes
+import math
+import subprocess
+import sys
+import tempfile
+from itertools import pairwise
+from pathlib import Path
+
+root = Path(__file__).resolve().parent
+Q31 = 1 << 31
+SHIFT = 12
+RATES = (44100, 48000, 32000, 22050, 8000)
+AUTO = 1  # CROSSFEED_PRECUT_AUTO
+DIRECTS = range(-60, 1, 5)
+CROSSES = range(-120, -29, 5)
+
+
+class Custom(ctypes.Structure):
+    _fields_ = [
+        ("gain", ctypes.c_int32),
+        ("coefs", ctypes.c_int32 * 3),
+        ("precut", ctypes.c_int16),
+    ]
+
+
+class Set(ctypes.Structure):
+    _fields_ = [
+        ("mode", ctypes.c_uint8),
+        ("direct", ctypes.c_int16),
+        ("cross", ctypes.c_int16),
+        ("hf", ctypes.c_int16),
+        ("cutoff", ctypes.c_uint16),
+        ("precut", ctypes.c_int16),
+    ]
+
+
+def build(work, name, sources):
+    library = work / name
+    subprocess.run(
+        ["cc", "-std=c11", "-Wall", "-Wextra", "-Werror", "-g", "-shared", "-fPIC"]
+        + ["-fsanitize=undefined", "-fno-sanitize-recover=undefined"]
+        + [f"-I{sdk}", f"-I{sdk}/extension", f"-I{root.parent}", "-D_FORTIFY_SOURCE=0"]
+        + [str(source) for source in sources]
+        + ["-o", str(library)],
+        check=True,
+    )
+    return ctypes.CDLL(str(library))
+
+
+def to_q31(value):
+    if value >= 1:
+        return Q31 - 1
+    return int(math.floor(value * Q31 + 0.5))
+
+
+def worst_case(gain, coefs):
+    """The largest output for full-scale input: the direct gain plus the sum of
+    the cross path's impulse response magnitudes, all Q31."""
+    b0, b1, a1 = (c / Q31 for c in coefs)
+    return gain / Q31 + abs(b0) + abs(b1 + a1 * b0) / (1 - abs(a1))
+
+
+def reference_design(rate, direct, cross, hf, cutoff, precut=0):
+    """Rockbox's custom crossfeed in floating point: a bilinear first-order
+    high shelf with its cutoff moved to the -3 dB point, scaled by the cross
+    gain; gains in tenths of a decibel. The precut lowers both paths."""
+    direct += precut
+    scaler = 10 ** ((cross + precut) / 200)
+    g = 10 ** ((hf - cross) / 400)
+    theta = min(math.pi * cutoff / (g * rate), 0.45 * math.pi)  # held below Nyquist
+    s, c = math.sin(theta), math.cos(theta)
+    b0, b1, a0, a1 = s + c * g, s - c * g, s + c / g, s - c / g
+    return to_q31(10 ** (direct / 200)), [
+        to_q31(scaler * b0 / a0),
+        to_q31(scaler * b1 / a0),
+        to_q31(-a1 / a0),
+    ]
+
+
+def design_tests(dll):
+    design = dll.crossfeed_design
+    design.argtypes = [ctypes.POINTER(Custom), ctypes.c_uint] + [ctypes.c_int] * 3
+    design.argtypes += [ctypes.c_uint, ctypes.c_int]
+    design.restype = None
+    cases = [
+        (-15, -60, -160, 700),
+        (0, -30, -60, 500),
+        (-60, -120, -240, 2000),
+        (0, -120, -60, 2000),  # the steepest lift: +6 dB across the shelf
+        (-5, -30, -240, 500),  # the deepest cut: -21 dB across the shelf
+        (-5, -30, -240, 2000),  # the widest angle: above Nyquist at 8 kHz
+    ]
+    for rate in RATES:
+        for direct, cross, hf, cutoff in cases:
+            out = Custom()
+            design(out, rate, direct, cross, hf, cutoff, 0)
+            gain, coefs = reference_design(rate, direct, cross, hf, cutoff)
+            assert out.precut == 0
+            # The gain table is s3.28.
+            assert abs(out.gain - gain) <= 8, (rate, direct, out.gain, gain)
+            for actual, expected in zip(out.coefs, coefs, strict=True):
+                where = (rate, cross, hf, cutoff, actual, expected)
+                assert abs(actual - expected) <= 1024, where
+            # The cross path is the cross gain at DC and the attenuation at Nyquist.
+            b0, b1, a1 = (c / Q31 for c in out.coefs)
+            at_dc = (b0 + b1) / (1 - a1)
+            at_nyquist = (b0 - b1) / (1 + a1)
+            assert abs(20 * math.log10(at_dc) - cross / 10) < 0.01
+            if math.pi * cutoff / (10 ** ((hf - cross) / 400) * rate) < 0.45 * math.pi:
+                assert abs(20 * math.log10(at_nyquist) - hf / 10) < 0.01
+            assert abs(out.coefs[2]) < Q31 * 0.95  # a stable pole
+            # Everything stays below full scale, as the Q31 format needs.
+            assert all(abs(c) < Q31 for c in out.coefs)
+    out = Custom()
+    design(out, 44100, 0, -60, -160, 700, 0)
+    assert out.gain == Q31 - 1
+
+    # Auto at every setting and rate: the largest output for full-scale input
+    # stays at or below full scale, and half a decibel less precut would pass
+    # it. The bass sum alone misses treble lifts, by up to 3.2 dB.
+    lifted = 0
+    for rate in (44100, 48000):
+        for direct in DIRECTS:
+            for cross in CROSSES:
+                for hf in range(-240, -59, 5):
+                    for cutoff in range(500, 2001, 100):
+                        out = Custom()
+                        design(out, rate, direct, cross, hf, cutoff, AUTO)
+                        assert worst_case(out.gain, out.coefs) <= 1 + 1e-6
+                        gain, coefs = reference_design(
+                            rate, direct, cross, hf, cutoff, out.precut + 5
+                        )
+                        if out.precut:
+                            assert worst_case(gain, coefs) > 1 - 1e-4
+                        bass = 10 ** (direct / 200) + 10 ** (cross / 200)
+                        lifted += -out.precut > 200 * math.log10(max(bass, 1)) + 1
+    assert lifted
+    # A fixed precut lowers both paths by exactly that.
+    out = Custom()
+    design(out, 44100, -15, -60, -160, 700, -30)
+    assert out.precut == -30
+    gain, coefs = reference_design(44100, -15, -60, -160, 700, -30)
+    assert abs(out.gain - gain) <= 16
+    assert all(abs(a - e) <= 1024 for a, e in zip(out.coefs, coefs, strict=True))
+
+
+def label_tests(dll):
+    label = dll.crossfeed_label
+    label.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_char_p]
+    label.restype = ctypes.c_char_p
+    MODE, PRECUT, DIRECT, CROSS, HF, CUTOFF = range(6)
+
+    def labels(parameter, count):
+        out = ctypes.create_string_buffer(16)
+        return [label(parameter, i, out).decode() for i in range(count)]
+
+    def decibels(first, count):
+        return [f"{(first + 5 * i) / 10:.1f} dB" for i in range(count)]
+
+    assert labels(MODE, 3) == ["Off", "Simple", "Custom"]
+    assert labels(DIRECT, 13) == decibels(-60, 13)
+    assert labels(CROSS, 19) == decibels(-120, 19)
+    assert labels(HF, 37) == decibels(-240, 37)
+    assert labels(CUTOFF, 16) == [
+        f"{hz} Hz" if hz < 1000 else f"{hz / 1000:g}k Hz"
+        for hz in range(500, 2001, 100)
+    ]
+    assert labels(DIRECT, 13)[9] == "-1.5 dB"
+    assert labels(CROSS, 19)[12] == "-6.0 dB"
+    assert labels(HF, 37)[16] == "-16.0 dB"
+    assert labels(CUTOFF, 16)[2] == "700 Hz"
+    assert labels(PRECUT, 14) == ["Auto"] + decibels(0, 1) + [
+        f"{-(i + 1) / 2:.1f} dB" for i in range(12)
+    ]
+
+
+def response_tests(dll):
+    """The editor's curves: in Custom the cross gain in the bass, the
+    attenuation in the treble, falling in between with the knee near the
+    cutoff, over a flat own channel; in Simple the loop's transfer function;
+    nothing fed across while Off."""
+    response = dll.crossfeed_response
+    response.argtypes = [ctypes.POINTER(Set), ctypes.c_uint]
+    response.argtypes += [ctypes.POINTER(ctypes.c_int16)] * 2 + [ctypes.c_uint]
+    response.restype = None
+    points = 261
+    hertz = [20 * 1000 ** (i / (points - 1)) for i in range(points)]
+
+    def curves(bank):
+        same = (ctypes.c_int16 * points)()
+        other = (ctypes.c_int16 * points)()
+        response(bank, 44100, same, other, points)
+        return list(same), list(other)
+
+    cases = [
+        (-15, -60, -160, 700),
+        (0, -30, -60, 500),
+        (-60, -120, -240, 2000),
+        (0, -120, -60, 2000),
+    ]
+    for direct, cross, hf, cutoff in cases:
+        bank = Set(mode=2, direct=direct, cross=cross, hf=hf, cutoff=cutoff)
+        same, curve = curves(bank)
+        assert same == [direct] * points
+        assert abs(curve[0] - cross) <= 3, (cross, curve[0])
+        assert abs(curve[-1] - hf) <= 3, (hf, curve[-1])
+        steps = [b - a for a, b in zip(curve, curve[1:])]
+        assert all(s <= 0 for s in steps) if hf < cross else all(s >= 0 for s in steps)
+        # The shelf's pole and zero sit either side of the cutoff divided by
+        # the half gain g, so the curve is halfway between its ends there.
+        g = 10 ** ((hf - cross) / 400)
+        halfway = abs(hf - cross) / 2
+        knee = next(i for i, t in enumerate(curve) if abs(t - cross) >= halfway)
+        assert 0.8 < hertz[knee] * g / cutoff < 1.25, (cutoff / g, hertz[knee])
+        # Against the float reference's coefficients at every point.
+        gain, coefs = reference_design(44100, direct, cross, hf, cutoff)
+        b0, b1, a1 = (c / Q31 for c in coefs)
+        for hz, tenths in zip(hertz, curve):
+            w = 2 * math.pi * hz / 44100
+            z = complex(math.cos(w), -math.sin(w))
+            expected = 200 * math.log10(abs((b0 + b1 * z) / (1 - a1 * z)))
+            assert abs(tenths - expected) <= 1, (hz, tenths, expected)
+
+    # The precut is the design's, and lowers both curves by it.
+    design = dll.crossfeed_design
+    for direct in DIRECTS:
+        for cross in CROSSES:
+            bank = Set(mode=2, direct=direct, cross=cross, hf=-160, cutoff=700)
+            flat, plain = curves(bank)
+            assert flat == [direct] * points
+            for precut in (AUTO, -30, -60):
+                out = Custom()
+                design(out, 44100, direct, cross, -160, 700, precut)
+                bank.precut = precut
+                same, curve = curves(bank)
+                assert same == [direct + out.precut] * points, (direct, precut, same[0])
+                assert all(
+                    abs(c - (f + out.precut)) <= 1
+                    for c, f in zip(curve, plain, strict=True)
+                )
+
+    # Auto with Highs above Cross: the plot's precut is the design's, over
+    # every lifted shelf at the extreme Direct values.
+    for direct in (-60, 0):
+        for cross in CROSSES:
+            for hf in range(cross + 5, -59, 5):
+                for cutoff in (500, 1200, 2000):
+                    out = Custom()
+                    design(out, 44100, direct, cross, hf, cutoff, AUTO)
+                    bank = Set(
+                        mode=2,
+                        direct=direct,
+                        cross=cross,
+                        hf=hf,
+                        cutoff=cutoff,
+                        precut=AUTO,
+                    )
+                    same, _ = curves(bank)
+                    assert same[0] == direct + out.precut, (direct, cross, hf, cutoff)
+
+    # Simple: the loop's transfer function, H for the channel fed across and
+    # 1 - H for the ear's own, checked against the loop itself with a tone in
+    # one channel and then at every point.
+    c1, c2 = 2128 / 44100, 1000 / 44100
+
+    def simple_response(hz):
+        w = 2 * math.pi * hz / 44100
+        z = complex(math.cos(w), -math.sin(w))
+        return c2 * z**2 / (1 - (1 - c1) * z + 2 * c2 * z**2)
+
+    for hz in (50, 1000, 10000):
+        count = 20000
+        frames = [
+            (int(20000 * math.sin(2 * math.pi * hz * i / 44100)), 0)
+            for i in range(count)
+        ]
+        out = Reference(44100).simple(frames)[count // 2 :]
+        h = simple_response(hz)
+        for amplitude, expected in (
+            (max(abs(r) for _, r in out), abs(h)),
+            (max(abs(l) for l, _ in out), abs(1 - h)),
+        ):
+            got = 20 * math.log10(amplitude / 20000)
+            assert abs(got - 20 * math.log10(expected)) < 0.1, (hz, got, expected)
+    same, other = curves(Set(mode=1))
+    for hz, s, o in zip(hertz, same, other):
+        h = simple_response(hz)
+        assert abs(o - 200 * math.log10(abs(h))) <= 1, (hz, o)
+        assert abs(s - 200 * math.log10(abs(1 - h))) <= 1, (hz, s)
+    assert abs(other[0] + 123) <= 1 and abs(same[0] + 24) <= 1
+
+    # Off: the ear's own channel only.
+    same, other = curves(Set(mode=0))
+    assert same == [0] * points
+    assert other == [-32768] * points
+
+
+def wrap(value):
+    value &= 0xFFFFFFFF
+    return value - (1 << 32) if value & 0x80000000 else value
+
+
+def fracmul(a, b):
+    return wrap((a * b) >> 31)
+
+
+def output(sample):
+    """Back to the S16 scale, rounded and unsaturated, for the limiter."""
+    return (sample + (1 << (SHIFT - 1))) >> SHIFT
+
+
+def saturate(value):
+    return max(-32768, min(32767, value))
+
+
+class Limiter:
+    """rv_limiter, integer for integer."""
+
+    FRAMES, SHIFT, RELEASE, INPUT, UNITY = 32, 5, 12, (1 << 19) - 1, 1 << 30
+
+    def __init__(self):
+        self.rest()
+
+    def rest(self):
+        self.delay = [(0, 0)] * self.FRAMES
+        self.index = self.cut = self.target = self.slope = self.hold = 0
+
+    @classmethod
+    def clamp(cls, value):
+        return max(-cls.INPUT, min(cls.INPUT, value))
+
+    def run(self, frame):
+        left, right = (self.clamp(v) for v in frame)
+        peak = max(abs(left), abs(right))
+        if peak > 32767:
+            need = self.UNITY - (((32767 << 15) // peak) << 15)
+            if need > self.target:
+                self.target = need
+                steep = (need - self.cut + self.FRAMES - 1) >> self.SHIFT
+                self.slope = max(self.slope, steep)
+            self.hold = self.FRAMES + 1
+        if self.hold:
+            self.hold -= 1
+            if self.cut < self.target:
+                self.cut = min(self.cut + self.slope, self.target)
+            else:
+                self.slope = 0
+        elif self.cut:
+            self.target = self.slope = 0
+            self.cut = max(0, self.cut - (self.cut >> self.RELEASE) - 1)
+        delayed = self.delay[self.index]
+        self.delay[self.index] = (left, right)
+        self.index = (self.index + 1) % self.FRAMES
+        if self.cut:
+            gain = (self.UNITY - self.cut) >> 18
+            delayed = tuple((v * gain + (1 << 11)) >> 12 for v in delayed)
+        return tuple(saturate(v) for v in delayed)
+
+
+class Reference:
+    """Rockbox's two process loops on S16 raised by SHIFT bits, integer for
+    integer, with fp_div coefficients from a 64-bit divide."""
+
+    def __init__(self, rate):
+        self.coef1 = (2128 << 31) // rate
+        self.coef2 = (1000 << 31) // rate
+        self.vcl = self.vcr = self.vdiff = 0
+        self.history = [0, 0, 0, 0]
+        self.delay = [0] * (2 * (300 * rate // 1000000))
+        self.index = 0
+
+    def simple(self, frames):
+        out = []
+        for left, right in frames:
+            lout = wrap((left << SHIFT) + self.vcl)
+            rout = wrap((right << SHIFT) + self.vcr)
+            out.append((output(lout), output(rout)))
+            common = fracmul(self.vdiff, self.coef2)
+            self.vcl = wrap(self.vcl - (fracmul(self.vcl, self.coef1) + common))
+            self.vcr = wrap(self.vcr - (fracmul(self.vcr, self.coef1) - common))
+            self.vdiff = wrap(lout - rout)
+        return out
+
+    def custom(self, frames, gain, coefs):
+        out = []
+        h, d = self.history, self.delay
+        for left, right in frames:
+            left <<= SHIFT
+            right <<= SHIFT
+            i = self.index
+            b0, b1, a1 = coefs
+            acc = fracmul(d[i], b0) + fracmul(h[0], b1) + fracmul(h[1], a1)
+            h[1], h[0], d[i] = wrap(acc), d[i], left
+            acc = fracmul(d[i + 1], b0) + fracmul(h[2], b1) + fracmul(h[3], a1)
+            h[3], h[2], d[i + 1] = wrap(acc), d[i + 1], right
+            lout = output(fracmul(left, gain) + h[3])
+            rout = output(fracmul(right, gain) + h[1])
+            out.append((lout, rout))
+            self.index = (i + 2) % len(d)
+        return out
+
+
+def noise(count, seed, panned):
+    value = seed
+    frames = []
+    for _ in range(count):
+        value = (value * 1664525 + 1013904223) & 0xFFFFFFFF
+        left = value >> 16
+        left = left - 65536 if left >= 32768 else left
+        frames.append((left, 0 if panned else left))
+    if panned:
+        frames[0] = (32767, 0)
+    return frames
+
+
+FADE = 128
+
+
+def process_tests(dll):
+    publish = dll.crossfeed_publish
+    publish.argtypes = [ctypes.POINTER(Set)]
+    publish.restype = None
+    process = dll.crossfeed_process
+    process.argtypes = [ctypes.POINTER(ctypes.c_int16)] + [ctypes.c_uint32] * 2
+    process.restype = None
+    design = dll.crossfeed_design
+    design.argtypes = [ctypes.POINTER(Custom), ctypes.c_uint] + [ctypes.c_int] * 3
+    design.argtypes += [ctypes.c_uint, ctypes.c_int]
+    design.restype = None
+    count = 512
+
+    def designed(rate, bank):
+        out = Custom()
+        design(out, rate, bank.direct, bank.cross, bank.hf, bank.cutoff, bank.precut)
+        return out.gain, list(out.coefs)
+
+    class Player:
+        """One instance as the engine keeps it: a set at a rate over a Reference."""
+
+        def __init__(self, rate, chosen):
+            self.rate, self.chosen, self.mode = rate, chosen, chosen.mode
+            self.reference = Reference(rate)
+            self.custom = designed(rate, chosen) if chosen.mode == 2 else None
+
+        def play(self, frames):
+            if self.mode == 1:
+                return self.reference.simple(frames)
+            if self.mode == 2:
+                return self.reference.custom(frames, *self.custom)
+            return list(frames)
+
+    # What plays, what fades out and the frames left of that fade, a set left
+    # while an on/off fade lasts, and the limiter behind both.
+    engine = {"new": Player(44100, Set(mode=0)), "old": None, "remaining": 0}
+    engine["pending"] = None
+    limiter = Limiter()
+
+    def switching():
+        old = engine["old"]
+        return bool(
+            engine["remaining"]
+            and old is not None
+            and bool(old.mode) != bool(engine["new"].mode)
+        )
+
+    def take(chosen, rate):
+        """At the same rate the engine fades from what played and a same-mode
+        set keeps the history; turning on rests the limiter and leads the fade
+        by its delay; a new rate starts over without a fade."""
+        old, new = engine["new"], Player(rate, chosen)
+        if rate == old.rate and chosen.mode == old.mode:
+            new.reference = copy.deepcopy(old.reference)
+        turns_on = bool(chosen.mode) and not old.mode
+        if turns_on:
+            limiter.rest()
+        engine["new"] = new
+        if rate == old.rate:
+            engine["old"] = old
+            engine["remaining"] = FADE + (Limiter.FRAMES if turns_on else 0)
+        else:
+            engine["old"], engine["remaining"] = None, 0
+
+    def switch(chosen):
+        """Publishes a set, which the next process call takes."""
+        publish(chosen)
+        engine["pending"] = chosen
+
+    def expected(frames, rate):
+        """One process call: a pending set is taken unless an on/off fade
+        lasts, a new rate takes it at once, then rv_fade_run_limited's blend."""
+        pending = engine["pending"]
+        if (pending is not None and not switching()) or rate != engine["new"].rate:
+            take(pending if pending is not None else engine["new"].chosen, rate)
+            engine["pending"] = None
+        new, old = engine["new"], engine["old"]
+        new_out = new.play(frames) if new.mode else None
+        running = old is not None and engine["remaining"] and old.mode
+        old_out = old.play(frames) if running else None
+        out = []
+        for i, frame in enumerate(frames):
+            remaining = engine["remaining"]
+            if not remaining:
+                out.append(frame if new_out is None else limiter.run(new_out[i]))
+                continue
+            weight = 0 if remaining > FADE else FADE + 1 - remaining
+            if old_out is not None and new_out is not None:
+                mixed = tuple(
+                    (Limiter.clamp(a) * (FADE - weight) + Limiter.clamp(b) * weight)
+                    >> 7
+                    for a, b in zip(old_out[i], new_out[i], strict=True)
+                )
+                out.append(limiter.run(mixed))
+            elif old_out is not None or new_out is not None:
+                alone = limiter.run(old_out[i] if old_out is not None else new_out[i])
+                if old_out is not None:
+                    weight = FADE - weight
+                out.append(
+                    tuple(
+                        (x * (FADE - weight) + y * weight) >> 7
+                        for x, y in zip(frame, alone, strict=True)
+                    )
+                )
+            else:
+                out.append(frame)
+            engine["remaining"] -= 1
+        if not engine["remaining"]:
+            engine["old"] = None
+        return out
+
+    def run(frames, rate, *splits):
+        """Processes the frames in one buffer, or in buffers cut at the splits.
+        A rate the engine has not seen starts its state over without a fade."""
+        buffer = (ctypes.c_int16 * (2 * len(frames)))(
+            *[s for frame in frames for s in frame]
+        )
+        edges = [0, *splits, len(frames)]
+        for first, last in pairwise(edges):
+            process(
+                ctypes.cast(ctypes.byref(buffer, 4 * first), process.argtypes[0]),
+                last - first,
+                rate,
+            )
+        return [(buffer[2 * i], buffer[2 * i + 1]) for i in range(len(frames))]
+
+    def play(frames, rate, *splits):
+        """Runs the frames and checks them against the model, returning them."""
+        got = run(frames, rate, *splits)
+        edges = [0, *splits, len(frames)]
+        model = [f for a, b in pairwise(edges) for f in expected(frames[a:b], rate)]
+        assert got == model, (rate, splits)
+        return got
+
+    def interrupts(dll):
+        dll.test_irq_calls.restype = ctypes.c_uint32
+        return dll.test_irq_calls()
+
+    # Off leaves the stream alone.
+    switch(Set(mode=0))
+    frames = noise(count, 1, True)
+    assert play(frames, 44100) == frames
+    assert interrupts(dll) == 2
+
+    # Simple, bit for bit against the reference, history carried across
+    # blocks, restarted by a rate change; mono keeps both channels alike, at
+    # the gain the limiter recovers to after the full-scale noise.
+    switch(Set(mode=1))
+    for rate in (44100, 48000, 8000):
+        for block in range(3):
+            frames = noise(count, block + rate, True)
+            play(frames, rate)
+    frames = noise(count, 7, False)
+    assert all(left == right for left, right in play(frames, 44100)[Limiter.FRAMES :])
+
+    # Custom at every rate, the delay line and shelf history carried across
+    # blocks; the panned impulse reaches the other channel delayed, under the
+    # fade from what played before.
+    def custom_set(direct, cross, hf, cutoff, precut=0):
+        return Set(
+            mode=2, direct=direct, cross=cross, hf=hf, cutoff=cutoff, precut=precut
+        )
+
+    for rate in RATES:
+        bank = custom_set(-15, -60, -160, 700)
+        switch(bank)
+        for block in range(3):
+            frames = noise(count, block + rate, True)
+            play(frames, rate)
+            if block == 0:
+                alone = Player(rate, bank).play(frames)
+                delay = 300 * rate // 1000000
+                assert all(right == 0 for _, right in alone[:delay])
+                assert alone[delay][1] != 0
+
+    # New Custom values keep the delay line and shelf history, and fade in from
+    # the old ones; a change of mode fades from the old mode into fresh state.
+    switch(Set(mode=1))
+    frames = noise(count, 9, True)
+    play(frames, 44100)
+    first, second = custom_set(-15, -60, -160, 700), custom_set(0, -30, -60, 500)
+    switch(first)
+    frames = noise(count, 10, True)
+    play(frames, 44100)
+    switch(second)
+    frames = noise(count, 11, True)
+    play(frames, 44100)
+    switch(Set(mode=1))
+    frames = noise(count, 12, True)
+    play(frames, 44100)
+
+    # A fade spans buffer edges and ends after FADE frames whatever their size;
+    # a set taken during a fade restarts the fade from the set that plays; a
+    # rate change ends a fade and starts the state over.
+    switch(first)
+    frames = noise(count, 15, True)
+    play(frames, 44100, 17, 100)
+    switch(second)
+    frames = noise(64, 16, True)
+    play(frames, 44100)
+    switch(Set(mode=1))
+    frames = noise(count, 17, True)
+    play(frames, 44100)
+    switch(first)
+    frames = noise(64, 18, True)
+    play(frames, 44100)
+    frames = noise(count, 19, True)
+    play(frames, 48000)
+
+    # Correlated full-scale input in Custom without a precut is limited to full
+    # scale instead of wrapping or clipping.
+    switch(custom_set(0, -30, -60, 500))
+    loud = [(32767, 32767)] * count
+    got = play(loud, 44100)
+    assert 32700 <= got[-1][0] <= 32767 and got[-1][0] == got[-1][1], got[-1]
+
+    # Simple on full-scale opposite channels goes over by up to 3.4 dB; the
+    # limiter holds it at full scale.
+    switch(Set(mode=1))
+    square = [(32767, -32767) if i // 50 % 2 else (-32767, 32767) for i in range(count)]
+    wide = Reference(44100).simple(square)
+    assert max(abs(s) for frame in wide for s in frame) > 40000
+    got = play(square, 44100)
+    assert 32000 < max(abs(s) for frame in got for s in frame) <= 32767
+
+    # A set left while an on/off fade lasts waits for its end: Off to Simple,
+    # then Custom 50 frames in, plays the Simple blend out first, across a
+    # buffer edge, and takes Custom on the buffer after it.
+    switch(Set(mode=0))
+    play(noise(count, 60, True), 44100)
+    switch(Set(mode=1))
+    play(noise(50, 61, True), 44100)
+    assert switching()
+    switch(custom_set(-15, -60, -160, 700))
+    play(noise(count, 62, True), 44100, 40)
+    assert engine["pending"] is not None and not switching()
+    play(noise(count, 63, True), 44100)
+    assert engine["pending"] is None and engine["new"].mode == 2
+
+    # A full-scale centred bass tone at the defaults goes over without a
+    # precut, which the limiter catches, and stays inside full scale with Auto, and the Auto set plays bit for
+    # bit as the reference with its design.
+    def tone():
+        return [
+            (s, s)
+            for s in (
+                round(32767 * math.sin(2 * math.pi * 60 * i / 44100))
+                for i in range(count)
+            )
+        ]
+
+    loud = custom_set(-15, -60, -160, 700)
+    assert (
+        max(abs(s) for frame in Player(44100, loud).play(tone()) for s in frame) > 32767
+    )
+    switch(loud)
+    play(tone(), 44100)
+    bank = custom_set(-15, -60, -160, 700, AUTO)
+    switch(bank)
+    play(tone(), 44100)  # the shelf and delay settle
+    got = play(tone(), 44100)
+    assert all(abs(s) < 32767 for frame in got for s in frame)
+    switch(Set(mode=1))
+    frames = noise(count, 13, True)
+    play(frames, 44100)
+    switch(bank)
+    frames = noise(count, 14, True)
+    play(frames, 44100)
+
+
+sdk = Path(sys.argv[1]).resolve()
+with tempfile.TemporaryDirectory(prefix="crossfeed-tests-") as name:
+    work = Path(name)
+    sources = [
+        root / "host.c",
+        sdk / "rv_libc.c",
+        sdk / "rv_math.c",
+        sdk / "rv_audio.c",
+    ] + [
+        root.parent / name
+        for name in ("crossfeed.c", "design.c", "labels.c", "modes.c", "response.c")
+    ]
+    dll = build(work, "crossfeed.so", sources)
+    design_tests(dll)
+    label_tests(dll)
+    response_tests(dll)
+    process_tests(dll)
+print("Crossfeed tests passed")

@@ -1,0 +1,22 @@
+RevolaOS
+Copyright (C) 2026 The RevolaOS Authors. GPL-3.0-only.
+The authors are the contributors recorded in each repository's git history.
+
+Every package links the eApp SDK runtime (eapp-sdk/runtime), which is
+adapted from the RepriseOS game SDK (https://github.com/lgreitis/osos-lab,
+game-sdk/ at 8fc840d) by lgreitis. GPL-3.0-only.
+
+Files that carry an "Adapted from", "Ported from" or copyright header keep
+that header.
+
+Third-party work included or built upon:
+
+- Rockbox (https://github.com/Rockbox/rockbox): the 2048 game and its tile
+  artwork by Franklin Wei, the high score table by Linus Nielsen Feltzing,
+  the Dice app by Brandon Low. GPL-2.0-or-later.
+- Khronos OpenGL ES 1.1 and KHR platform headers
+  (https://github.com/KhronosGroup/OpenGL-Registry,
+  https://github.com/KhronosGroup/EGL-Registry): the GL headers of the SDK
+  runtime linked into every package. MIT and Apache-2.0.
+
+Apple firmware is never included. Builds read it from the user's own IPSW.

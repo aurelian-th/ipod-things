@@ -41,6 +41,7 @@ RevisionOS builds on the modular **RevolaOS** extension architecture and **Repri
 | [`Games/`](Games/) | Prebuilt `.eapp` games (`doodlejump/`, `2048/`) and game credits | [Games README](Games/README.md) |
 | [`Apps/`](Apps/) | Prebuilt `.eapp` apps (`dice/`) and app credits | [Apps README](Apps/README.md) |
 | [`Themes/`](Themes/) | Instructions for custom `.rvt` themes | [Themes README](Themes/README.md) |
+| [`source/`](source/) | Complete GPL-3.0 corresponding source for firmware, extensions, games, host tools, and installer | [Source build guide](source/README.md) |
 | [`docs/`](docs/) | Guides for installation, extensions, Car Audio, lyrics, and recovery | [Recovery guide](docs/recovery.md) |
 
 ## Quick start
@@ -53,6 +54,6 @@ RevisionOS builds on the modular **RevolaOS** extension architecture and **Repri
 
 ## License and open-source credits
 
-Distributed under GPL-3.0-only; see [COPYING](COPYING) and [NOTICE](NOTICE) for full license terms, corresponding source details, and attribution. Apple copyrighted firmware is never distributed here.
+Distributed under GPL-3.0-only; see [COPYING](COPYING) and [NOTICE](NOTICE) for full license terms, attribution, and corresponding source details. Complete corresponding source code is included under [`source/`](source/). Apple copyrighted firmware is never distributed here.
 
 RevisionOS builds on [RevolaOS](https://github.com/RevolaOS) (core firmware, extension loader, SDK, theme engine, `eapp-sdk`, QEMU emulator updates, and first-party extensions, GPL-3.0-only), [RepriseOS](https://github.com/lgreitis/osos-lab) and [RepriseOS Installer](https://github.com/lgreitis/repriseos-installer) by lgreitis and contributors (2.0.5 boot chain, reverse engineering, dark palette/artwork, and original game SDK, GPL-3.0-only), [PodBox](https://github.com/anthonyfletcher/podbox) by Anthony Fletcher (iAP2 packet framing and HID reassembly reference, GPL-2.0-or-later), [Rockbox](https://github.com/Rockbox/rockbox) (bootloader, dual-boot installer, hardware drivers, USB helper, and Crossfeed/Channels/Compressor DSP, GPL-2.0-or-later), [wInd3x](https://github.com/freemyipod/wInd3x) by Serge "q3k" Bazanski (BootROM DFU exploit and tooling, GPL-2.0-or-later), [giek2000](https://github.com/giek2000/ipod-classic-firmware-research) (iPod Classic firmware research), [Cupertino Icons](https://github.com/flutter/packages) (MIT), and Khronos OpenGL ES 1.1 / EGL headers (MIT / Apache-2.0).

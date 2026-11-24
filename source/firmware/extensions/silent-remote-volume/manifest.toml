@@ -1,0 +1,14 @@
+id = "silent-remote-volume"
+name = "Silent Remote Volume"
+description = "Prevent wired headphone and dock remote volume buttons from waking the screen or resetting the backlight timer."
+version = "1.0.0"
+author = "0xAu"
+license = "GPL-3.0-only"
+api = "1.74"
+stability = "beta"
+type = "utility"
+
+[[module]]
+name = "main"
+trigger = "always"
+
