@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 ID := lyrics
 MODULES := main
-main_SOURCES := main.c lrc.c
+main_SOURCES := main.c lrc.c embedded.c
 
 ifndef SDK
 $(error set SDK to an unpacked revola SDK)

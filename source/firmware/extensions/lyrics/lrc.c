@@ -37,11 +37,147 @@ void lrc_state_reset(struct lrc_state *st)
     if (!st)
         return;
     st->line_count = 0;
+    st->row_count = 0;
     st->current_line = LRC_LINE_NONE;
     st->scroll_offset_px = 0;
     st->target_scroll_offset_px = 0;
     st->manual_scroll_ticks = 0;
     st->has_synced_timestamps = 0;
+}
+
+static size_t utf8_char_bytes(const char *s)
+{
+    uint8_t c = (uint8_t)s[0];
+    if (c == 0U)
+        return 0U;
+    if ((c & 0x80U) == 0U)
+        return 1U;
+    size_t n = 1U;
+    if ((c & 0xE0U) == 0xC0U)
+        n = 2U;
+    else if ((c & 0xF0U) == 0xE0U)
+        n = 3U;
+    else if ((c & 0xF8U) == 0xF0U)
+        n = 4U;
+    for (size_t i = 1U; i < n; i++) {
+        if (((uint8_t)s[i] & 0xC0U) != 0x80U)
+            return 1U;
+    }
+    return n;
+}
+
+static uint32_t glyph_width_px(const char *s, size_t bytes)
+{
+    if (bytes > 1U)
+        return 12U;
+    char c = s[0];
+    if (c == ' ')
+        return 4U;
+    if (c == 'i' || c == 'l' || c == 'I' || c == '!' || c == '.' ||
+        c == ',' || c == ':' || c == ';' || c == '\'' || c == '|' ||
+        c == 'j' || c == 't' || c == 'f' || c == 'r' || c == '(' || c == ')') {
+        return 5U;
+    }
+    if (c == 'W' || c == 'M' || c == '@' || c == '%' || c == '&')
+        return 11U;
+    if (c >= 'A' && c <= 'Z')
+        return 9U;
+    return 8U;
+}
+
+uint32_t lrc_build_wrap(struct lrc_state *st, uint32_t max_px)
+{
+    if (!st)
+        return 0U;
+    if (max_px < 40U)
+        max_px = 40U;
+
+    st->row_count = 0U;
+    for (uint32_t i = 0U; i < st->line_count && st->row_count < LRC_MAX_ROWS; i++) {
+        const char *text = st->lines[i].text;
+        st->line_first_row[i] = (uint16_t)st->row_count;
+        st->line_row_count[i] = 0U;
+
+        if (text[0] == '\0') {
+            st->rows[st->row_count++] = (struct lrc_row){
+                .line_idx = (uint16_t)i,
+                .offset = 0U,
+                .len = 0U,
+            };
+            st->line_row_count[i] = 1U;
+            continue;
+        }
+
+        size_t pos = 0U;
+        while (text[pos] != '\0' && st->row_count < LRC_MAX_ROWS) {
+            while (text[pos] == ' ')
+                pos++;
+            if (text[pos] == '\0')
+                break;
+
+            size_t start = pos;
+            size_t cur = start;
+            size_t last_space_end = 0U;
+            size_t last_space_next = 0U;
+            uint32_t width_px = 0U;
+
+            while (text[cur] != '\0') {
+                size_t cb = utf8_char_bytes(text + cur);
+                uint32_t gw = glyph_width_px(text + cur, cb);
+                if (width_px + gw > max_px && cur > start)
+                    break;
+                width_px += gw;
+                if (cb == 1U && text[cur] == ' ') {
+                    last_space_end = cur;
+                    last_space_next = cur + 1U;
+                }
+                cur += cb;
+            }
+
+            size_t seg_end = cur;
+            size_t next_pos = cur;
+            if (text[cur] != '\0' && last_space_end > start) {
+                seg_end = last_space_end;
+                next_pos = last_space_next;
+                while (seg_end > start && text[seg_end - 1U] == ' ')
+                    seg_end--;
+            }
+
+            size_t seg_len = seg_end - start;
+            if (seg_len > 255U)
+                seg_len = 255U;
+            st->rows[st->row_count++] = (struct lrc_row){
+                .line_idx = (uint16_t)i,
+                .offset = (uint8_t)start,
+                .len = (uint8_t)seg_len,
+            };
+            st->line_row_count[i]++;
+            pos = next_pos;
+        }
+
+        if (st->line_row_count[i] == 0U && st->row_count < LRC_MAX_ROWS) {
+            st->rows[st->row_count++] = (struct lrc_row){
+                .line_idx = (uint16_t)i,
+                .offset = 0U,
+                .len = 0U,
+            };
+            st->line_row_count[i] = 1U;
+        }
+    }
+
+    return st->row_count;
+}
+
+int32_t lrc_scroll_for_line(const struct lrc_state *st, uint32_t line_idx)
+{
+    if (!st || line_idx == LRC_LINE_NONE || line_idx >= st->line_count)
+        return 0;
+    uint32_t first = st->line_first_row[line_idx];
+    uint32_t cnt = st->line_row_count[line_idx];
+    if (cnt == 0U)
+        return (int32_t)(line_idx * LRC_LINE_HEIGHT);
+    uint32_t mid = first + (cnt - 1U) / 2U;
+    return (int32_t)(mid * LRC_LINE_HEIGHT);
 }
 
 static const char *parse_timestamp(const char *ptr, uint32_t *out_ms)
@@ -224,6 +360,7 @@ uint32_t lrc_parse(struct lrc_state *st, const char *content, uint32_t length)
         }
     }
 
+    lrc_build_wrap(st, LRC_WRAP_WIDTH_PX);
     return st->line_count;
 }
 
@@ -253,10 +390,8 @@ int lrc_update_playback(struct lrc_state *st, uint32_t current_ms)
     uint32_t active = lrc_find_active_line(st->lines, st->line_count, current_ms);
     if (active != st->current_line) {
         st->current_line = active;
-        if (st->manual_scroll_ticks == 0U) {
-            st->target_scroll_offset_px =
-                (active != LRC_LINE_NONE) ? (int32_t)(active * LRC_LINE_HEIGHT) : 0;
-        }
+        if (st->manual_scroll_ticks == 0U)
+            st->target_scroll_offset_px = lrc_scroll_for_line(st, active);
         return 1;
     }
     return 0;

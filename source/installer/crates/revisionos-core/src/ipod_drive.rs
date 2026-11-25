@@ -111,10 +111,26 @@ pub fn files_identical(a: &Path, b: &Path) -> bool {
     sha256_hex(&ba) == sha256_hex(&bb)
 }
 
+pub fn resolve_ci_dir(parent: &Path, expected: &str) -> PathBuf {
+    let exact = parent.join(expected);
+    if exact.exists() {
+        return exact;
+    }
+    if let Ok(entries) = fs::read_dir(parent) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            if name.to_string_lossy().eq_ignore_ascii_case(expected) {
+                return entry.path();
+            }
+        }
+    }
+    exact
+}
+
 pub fn looks_like_ipod_root(path: &Path) -> bool {
     path.is_dir()
-        && (path.join("iPod_Control").is_dir()
-            || path.join("Revola").is_dir()
+        && (resolve_ci_dir(path, "iPod_Control").is_dir()
+            || resolve_ci_dir(path, "Revola").is_dir()
             || path.join("osos-cfw.bin").is_file()
             || path.join("revola.bin").is_file())
 }
@@ -302,9 +318,10 @@ pub fn scan_ipod_root(root: &Path) -> Result<IpodScan, DriveError> {
         return Err(DriveError::NotAnIpod);
     }
 
-    let revola_dir = root.join("Revola");
-    let firmware_bin = revola_dir.join("Firmware/revola.bin");
-    let loader_bin = revola_dir.join("Firmware/loader.bin");
+    let revola_dir = resolve_ci_dir(root, "Revola");
+    let ipod_control_dir = resolve_ci_dir(root, "iPod_Control");
+    let firmware_bin = resolve_ci_dir(&revola_dir, "Firmware").join("revola.bin");
+    let loader_bin = resolve_ci_dir(&revola_dir, "Firmware").join("loader.bin");
     let legacy_bin = root.join("revola.bin");
     let legacy_loader = root.join("loader.bin");
     let reprise_osos = root.join("osos-cfw.bin");
@@ -319,7 +336,7 @@ pub fn scan_ipod_root(root: &Path) -> Result<IpodScan, DriveError> {
     let reprise_osos_matches_revola = files_identical(&reprise_osos, &firmware_bin);
 
     let mut extensions = Vec::new();
-    if let Ok(entries) = fs::read_dir(revola_dir.join("Extensions")) {
+    if let Ok(entries) = fs::read_dir(resolve_ci_dir(&revola_dir, "Extensions")) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().and_then(|s| s.to_str()) != Some("rvx") {
@@ -345,9 +362,9 @@ pub fn scan_ipod_root(root: &Path) -> Result<IpodScan, DriveError> {
     }
     extensions.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let games = scan_bundles(&revola_dir.join("Games"), "game");
-    let (reprise_games, apple_games_count) = scan_games_ro(&root.join("iPod_Control/Games_RO"));
-    let apps = scan_bundles(&revola_dir.join("Apps"), "app");
+    let games = scan_bundles(&resolve_ci_dir(&revola_dir, "Games"), "game");
+    let (reprise_games, apple_games_count) = scan_games_ro(&resolve_ci_dir(&ipod_control_dir, "Games_RO"));
+    let apps = scan_bundles(&resolve_ci_dir(&revola_dir, "Apps"), "app");
 
     let has_revola_backbone_files = has_firmware_bin
         || has_firmware_loader
@@ -406,7 +423,7 @@ pub fn scan_ipod_root(root: &Path) -> Result<IpodScan, DriveError> {
         has_root_loader_bin,
         reprise_osos_matches_revola,
         migration_recommended,
-        has_ipod_control: root.join("iPod_Control").is_dir(),
+        has_ipod_control: ipod_control_dir.is_dir(),
         extensions,
         games,
         reprise_games,

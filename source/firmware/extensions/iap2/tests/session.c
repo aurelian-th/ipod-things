@@ -54,6 +54,7 @@ struct host_capture {
     uint64_t play_coll_id;
     uint8_t play_coll_type;
     uint32_t play_coll_start;
+    unsigned play_current_calls;
     unsigned play_special_calls;
     uint8_t play_special_type;
     uint64_t play_special_start_id;
@@ -175,6 +176,12 @@ static void on_play_coll(void *ctx, uint64_t coll_id, uint8_t coll_type, uint32_
     cap->play_coll_id = coll_id;
     cap->play_coll_type = coll_type;
     cap->play_coll_start = start_idx;
+}
+
+static void on_play_current(void *ctx)
+{
+    struct host_capture *cap = ctx;
+    cap->play_current_calls++;
 }
 
 static void on_play_special(void *ctx, uint8_t stype, uint64_t start_item_id)
@@ -422,7 +429,13 @@ static void test_mib3_full_flow(void)
         0x4E, 0x0C, 0x4E, 0x0A, 0x4E, 0x09, 0x0B, 0x00, 0x0B, 0x03, 0x43, 0x00
     };
     static const uint8_t bt_grp[] = { 0x00, 0x06, 0x00, 0x00, 0x00, 0x07 };
+    static const char car_name[] = "MIB3 Infotainment";
+    static const char car_model[] = "3V0035";
+    static const char car_mfr[] = "Skoda";
     assert(iap2_control_start(msg_buf, sizeof(msg_buf), 0x1D01U, &msg_len) == IAP2_STATUS_OK);
+    assert(iap2_control_append(msg_buf, sizeof(msg_buf), &msg_len, 0U, (const uint8_t *)car_name, sizeof(car_name)) == IAP2_STATUS_OK);
+    assert(iap2_control_append(msg_buf, sizeof(msg_buf), &msg_len, 1U, (const uint8_t *)car_model, sizeof(car_model)) == IAP2_STATUS_OK);
+    assert(iap2_control_append(msg_buf, sizeof(msg_buf), &msg_len, 2U, (const uint8_t *)car_mfr, sizeof(car_mfr)) == IAP2_STATUS_OK);
     assert(iap2_control_append(msg_buf, sizeof(msg_buf), &msg_len, 7U, receives, sizeof(receives)) == IAP2_STATUS_OK);
     assert(iap2_control_append(msg_buf, sizeof(msg_buf), &msg_len, 17U, bt_grp, sizeof(bt_grp)) == IAP2_STATUS_OK);
     host_send_ctrl(&link, &session, msg_buf, msg_len, &host_seq, now_ms);
@@ -430,6 +443,9 @@ static void test_mib3_full_flow(void)
     now_ms += 30U;
     drain_device_to_host(&link, &session, &host_ctrl, &cap, &now_ms, &host_seq);
     assert(cap.ident_seen);
+    assert(strcmp(session.summary.car_name, car_name) == 0);
+    assert(strcmp(session.summary.car_model, car_model) == 0);
+    assert(strcmp(session.summary.car_manufacturer, car_mfr) == 0);
     assert(find_msg_index(&cap, 0x1D02U, 0U) >= 0);
     assert(find_msg_index(&cap, 0x4E0CU, 0U) >= 0);
     assert(find_msg_index(&cap, 0x4E0AU, 0U) >= 0);
@@ -1014,6 +1030,7 @@ static void test_queue_and_play_commands_and_reset(void)
     ops.on_playlist_keys_request = on_pl_req;
     ops.on_playlist_keys_done = on_pl_done;
     ops.on_queue_keys_done = on_q_done;
+    ops.on_play_library_current = on_play_current;
     ops.on_play_library_items = on_play_items;
     ops.on_play_library_collection = on_play_coll;
     ops.on_play_library_special = on_play_special;
@@ -1070,10 +1087,20 @@ static void test_queue_and_play_commands_and_reset(void)
     assert(cap.file_count == 0U);
     assert(cap.q_done_calls == 1U);
 
+    /* 0x4C06 / 0x4C07 inside 6s post-identification guard are suppressed, then honored after 6s */
+    uint32_t guard_ms = session.identified_ms + 500U;
+    assert(iap2_control_start(msg, sizeof(msg), 0x4C06U, &mlen) == IAP2_STATUS_OK);
+    host_send_ctrl(&link, &session, msg, mlen, &host_seq, guard_ms);
+    assert(cap.play_current_calls == 0U);
+    assert(session.summary.play_cmd_suppressed == 1U);
+
+    now_ms = session.identified_ms + IAP2_CONNECT_PLAY_GUARD_MS + 500U;
+
     /* Car Play commands 0x4C06, 0x4C07, 0x4C08, 0x4C09 */
     assert(iap2_control_start(msg, sizeof(msg), 0x4C06U, &mlen) == IAP2_STATUS_OK);
     host_send_ctrl(&link, &session, msg, mlen, &host_seq, now_ms);
-    assert(cap.play_special_calls == 1U && cap.play_special_type == 0U);
+    assert(cap.play_current_calls == 1U);
+    assert(cap.play_special_calls == 0U);
 
     static const uint8_t item_ids[16] = {
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x01,
@@ -1086,6 +1113,11 @@ static void test_queue_and_play_commands_and_reset(void)
     host_send_ctrl(&link, &session, msg, mlen, &host_seq, now_ms);
     assert(cap.play_items_calls == 1U && cap.play_items_cnt == 2U && cap.play_items_start == 1U);
     assert(cap.play_items[0] == 0x1001ULL && cap.play_items[1] == 0x1002ULL);
+
+    /* Duplicate 0x4C07 within 1500 ms is debounced */
+    host_send_ctrl(&link, &session, msg, mlen, &host_seq, now_ms + 400U);
+    assert(cap.play_items_calls == 1U);
+    assert(session.summary.play_cmd_suppressed == 2U);
 
     static const uint8_t coll_id[8] = { 0x00, 0x00, 0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF };
     static const uint8_t coll_type2[1] = { 2U };
@@ -1103,13 +1135,13 @@ static void test_queue_and_play_commands_and_reset(void)
     assert(iap2_control_append(msg, sizeof(msg), &mlen, 1U, stype1, 1U) == IAP2_STATUS_OK);
     assert(iap2_control_append(msg, sizeof(msg), &mlen, 2U, start_id, 8U) == IAP2_STATUS_OK);
     host_send_ctrl(&link, &session, msg, mlen, &host_seq, now_ms);
-    assert(cap.play_special_calls == 2U && cap.play_special_type == 1U);
+    assert(cap.play_special_calls == 1U && cap.play_special_type == 1U);
     assert(cap.play_special_start_id == 0x55ULL);
-    assert(session.summary.play_cmd_count == 4U);
+    assert(session.summary.play_cmd_count == 6U);
     assert(session.summary.last_play_cmd_id == 0x4C09U);
     assert(session.summary.rx_head_count == 8U);
     assert(session.summary.rx_tail_count == 4U);
-    assert(session.summary.rx_tail_ids[0] == 0x4C06U);
+    assert(session.summary.rx_tail_ids[0] == 0x4C07U);
     assert(session.summary.rx_tail_ids[3] == 0x4C09U);
 
     /* Reset releases in-flight borrowed batch & queue buffers cleanly */
@@ -1129,6 +1161,48 @@ static void test_queue_and_play_commands_and_reset(void)
     assert(cap.lib_batch_done_calls == prev_b + 1U && cap.last_lib_batch_done_id == 99U);
     assert(cap.q_done_calls == prev_q + 1U && !cap.last_q_done_ok);
     assert(cap.lib_stop_calls == prev_s + 1U);
+
+    /* mark_media_pending prevents premature STOPPED NowPlayingUpdate before media is polled */
+    iap2_session_mark_media_pending(&session);
+    assert(!session.media_synced);
+    assert(iap2_link_handle_probe(&link) == IAP2_STATUS_OK);
+    static const uint8_t syn2[] = {
+        0x01, 0x04, 0x04, 0x00, 0x03, 0xE8, 0x00, 0x14, 0x03, 0x01, 10U, 0U, 1U
+    };
+    size_t syn2_len = 0U;
+    uint8_t syn2_pkt[64];
+    host_seq = 0x50U;
+    assert(iap2_encode_packet(syn2_pkt, sizeof(syn2_pkt), IAP2_CTL_SYN, host_seq,
+                              0U, 0U, syn2, sizeof(syn2), &syn2_len) == IAP2_STATUS_OK);
+    struct iap2_link_rx_result rx2;
+    assert(iap2_link_receive_packet(&link, syn2_pkt, syn2_len, &rx2) == IAP2_STATUS_OK);
+    now_ms += 100U;
+    drain_device_to_host(&link, &session, &host_ctrl, &cap, &now_ms, &host_seq);
+    uint8_t cert_dummy[600];
+    memset(cert_dummy, 0x11, sizeof(cert_dummy));
+    uint8_t msg2[700];
+    assert(iap2_control_start(msg2, sizeof(msg2), 0xAA01U, &mlen) == IAP2_STATUS_OK);
+    assert(iap2_control_append(msg2, sizeof(msg2), &mlen, 0U, cert_dummy, sizeof(cert_dummy)) == IAP2_STATUS_OK);
+    host_send_ctrl(&link, &session, msg2, mlen, &host_seq, now_ms);
+    static const uint8_t rsp2[4] = { 1U, 2U, 3U, 4U };
+    assert(iap2_control_start(msg, sizeof(msg), 0xAA03U, &mlen) == IAP2_STATUS_OK);
+    assert(iap2_control_append(msg, sizeof(msg), &mlen, 0U, rsp2, 4U) == IAP2_STATUS_OK);
+    host_send_ctrl(&link, &session, msg, mlen, &host_seq, now_ms);
+    now_ms += 25U;
+    drain_device_to_host(&link, &session, &host_ctrl, &cap, &now_ms, &host_seq);
+    assert(iap2_control_start(msg, sizeof(msg), 0x1D01U, &mlen) == IAP2_STATUS_OK);
+    host_send_ctrl(&link, &session, msg, mlen, &host_seq, now_ms);
+    now_ms += 35U;
+    drain_device_to_host(&link, &session, &host_ctrl, &cap, &now_ms, &host_seq);
+    cap.ctrl_count = 0U;
+    assert(iap2_control_start(msg, sizeof(msg), 0x5000U, &mlen) == IAP2_STATUS_OK);
+    host_send_ctrl(&link, &session, msg, mlen, &host_seq, now_ms);
+    drain_device_to_host(&link, &session, &host_ctrl, &cap, &now_ms, &host_seq);
+    assert(find_msg_index(&cap, 0x5001U, 0U) < 0); /* suppressed until media is synced */
+    iap2_session_set_media(&session, &media);
+    assert(session.media_synced);
+    drain_device_to_host(&link, &session, &host_ctrl, &cap, &now_ms, &host_seq);
+    assert(find_msg_index(&cap, 0x5001U, 0U) >= 0);
 }
 
 int main(void)

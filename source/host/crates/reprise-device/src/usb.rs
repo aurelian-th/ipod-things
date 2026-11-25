@@ -174,14 +174,41 @@ impl Session {
                 "Expected BootROM DFU interface 0, alternate setting 0",
             ));
         }
+        let retryable_claim = |e: rusb::Error| {
+            cfg!(target_os = "macos")
+                && matches!(
+                    e,
+                    rusb::Error::Access | rusb::Error::Busy | rusb::Error::NotFound
+                )
+        };
         let open_libusb = || -> Result<Handle> {
-            let handle = device
-                .open()
-                .map_err(|e| usb_error("open (check USB permissions/driver)", e))?;
-            handle
-                .claim_interface(0)
-                .map_err(|e| usb_error("claim interface 0 (close other USB tools)", e))?;
-            Ok(Handle::Libusb(handle))
+            let mut attempt = 0u8;
+            loop {
+                let res = device.open().and_then(|handle| {
+                    handle.claim_interface(0)?;
+                    Ok(handle)
+                });
+                match res {
+                    Ok(handle) => return Ok(Handle::Libusb(handle)),
+                    Err(e) if attempt < 10 && retryable_claim(e) => {
+                        attempt += 1;
+                        std::thread::sleep(Duration::from_millis(250));
+                    }
+                    Err(e) => {
+                        #[cfg(target_os = "macos")]
+                        if matches!(e, rusb::Error::Access | rusb::Error::Busy) {
+                            return Err(usb_error(
+                                "claim DFU interface 0 (Finder or AMPDeviceDiscoveryAgent is holding the iPod; close Finder windows or run 'killall AMPDeviceDiscoveryAgent' and retry)",
+                                e,
+                            ));
+                        }
+                        return Err(usb_error(
+                            "open/claim DFU interface 0 (check USB permissions or close other USB tools)",
+                            e,
+                        ));
+                    }
+                }
+            }
         };
         #[cfg(not(windows))]
         let handle = open_libusb()?;

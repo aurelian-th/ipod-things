@@ -17,6 +17,7 @@ static uint32_t fake_irq_depth;
 static uint32_t fake_irq_save_calls;
 static uint32_t fake_irq_restore_calls;
 static int32_t fake_setting_protocol;
+static int32_t fake_setting_diag;
 static uint32_t fake_hook_next_called;
 static uint32_t fake_hook_next_arg_usb;
 static uint32_t fake_hook_next_arg_length;
@@ -61,6 +62,8 @@ static int32_t test_setting_int(rv_extension_handle handle, uint16_t key)
     assert(fake_irq_depth == 0);
     if (key == 4)
         return fake_setting_protocol;
+    if (key == 5)
+        return fake_setting_diag;
     return 0;
 }
 
@@ -68,8 +71,9 @@ static void test_refresh(rv_extension_handle handle, const char *screen)
 {
     (void)handle;
     assert(fake_irq_depth == 0);
-    assert(strcmp(screen, "car_audio") == 0);
-    fake_refresh_calls++;
+    assert(strcmp(screen, "car_audio") == 0 || strcmp(screen, "car_diag") == 0);
+    if (strcmp(screen, "car_audio") == 0)
+        fake_refresh_calls++;
 }
 
 static void test_pane_refresh(rv_extension_handle handle)
@@ -184,8 +188,8 @@ static void test_descriptor_and_iap1_passthrough(void)
     const struct rv_descriptor *desc = rv_module_entry(&fake_api, fake_handle);
     assert(desc != NULL);
     assert(desc->hook_count == 3);
-    assert(desc->setting_count == 1);
-    assert(desc->screen_count == 2);
+    assert(desc->setting_count == 2);
+    assert(desc->screen_count == 3);
     assert(desc->entry_count == 1);
 
     assert(desc->hooks[0].site == RV_SITE_USBHID_Activate_slot);
@@ -202,16 +206,25 @@ static void test_descriptor_and_iap1_passthrough(void)
     assert(strcmp(desc->settings[0].labels[0], "iAP1") == 0);
     assert(strcmp(desc->settings[0].labels[1], "iAP2") == 0);
 
+    assert(desc->settings[1].key == KEY_DIAG_LOGGING);
+    assert(desc->settings[1].type == RV_SETTING_TYPE_INT);
+    assert(desc->settings[1].fallback == 0);
+
     assert(strcmp(desc->screens[0].id, "car_audio") == 0);
     assert(strcmp(desc->screens[0].title, "Car Audio") == 0);
     assert(desc->screens[0].kind == RV_SCREEN_KIND_LIST);
-    assert(desc->screens[0].list.count == 3);
+    assert(desc->screens[0].list.count == 5);
     assert(desc->screens[0].list.panes != NULL);
 
-    assert(strcmp(desc->screens[1].id, "car_about") == 0);
-    assert(strcmp(desc->screens[1].title, "Car Audio") == 0);
-    assert(desc->screens[1].kind == RV_SCREEN_KIND_TEXT);
-    assert(desc->screens[1].text.count == 4);
+    assert(strcmp(desc->screens[1].id, "car_diag") == 0);
+    assert(strcmp(desc->screens[1].title, "Diagnostics") == 0);
+    assert(desc->screens[1].kind == RV_SCREEN_KIND_LIST);
+    assert(desc->screens[1].list.count == 6);
+
+    assert(strcmp(desc->screens[2].id, "car_about") == 0);
+    assert(strcmp(desc->screens[2].title, "Car Audio") == 0);
+    assert(desc->screens[2].kind == RV_SCREEN_KIND_TEXT);
+    assert(desc->screens[2].text.count == 4);
 
     assert(desc->entries[0].menu == RV_MENU_SETTINGS);
     assert(desc->entries[0].after == RV_SETTINGS_SOUND_CHECK);
@@ -731,9 +744,33 @@ static void test_consumer_ui_formatters_and_callbacks(void)
     assert(strcmp(desc->screens[0].list.panes[0].caption_text(NULL), "Newer cars (USB)") == 0);
     assert(strcmp(desc->screens[0].list.rows[1].text(NULL), "Ready (iAP2)") == 0);
     assert(strcmp(desc->screens[0].list.panes[1].caption_text(NULL), "Waiting for car") == 0);
-    assert(strcmp(desc->screens[0].list.panes[2].caption, "Older vs. newer") == 0);
-    assert(fake_irq_save_calls == 4);
-    assert(fake_irq_restore_calls == 4);
+    assert(strcmp(desc->screens[0].list.panes[2].caption_text(NULL), "Off (no disk writes)") == 0);
+    assert(strcmp(desc->screens[0].list.panes[4].caption, "Older vs. newer") == 0);
+    assert(fake_irq_save_calls == 5);
+    assert(fake_irq_restore_calls == 5);
+
+    fake_setting_diag = 1;
+    desc->setting_changed(KEY_DIAG_LOGGING);
+    assert(diag_state.diag_logging == 1);
+    assert(strcmp(desc->screens[0].list.panes[2].caption_text(NULL), "Writes Data/.../diag.txt") == 0);
+    assert(strcmp(desc->screens[1].list.rows[5].text(NULL), "Data/.../iap2/diag.txt") == 0);
+
+    struct iap2_diag_snapshot diag_snap;
+    read_ui_snapshot(&diag_snap);
+    diag_snap.session_summary.car_manufacturer[0] = 'V';
+    diag_snap.session_summary.car_manufacturer[1] = 'W';
+    diag_snap.session_summary.car_manufacturer[2] = '\0';
+    diag_snap.session_summary.play_cmd_suppressed = 3U;
+    char report[1024];
+    size_t rlen = iap2_format_diag_report(&diag_snap, report, sizeof(report));
+    assert(rlen > 0U);
+    assert(strstr(report, "RevisionOS Car Audio v1.1.0") != NULL);
+    assert(strstr(report, "Mfr:VW") != NULL);
+    assert(strstr(report, "Suppressed:3") != NULL);
+
+    fake_setting_diag = 0;
+    desc->setting_changed(KEY_DIAG_LOGGING);
+    assert(diag_state.diag_logging == 0);
 
     puts("  [PASS] Consumer UI formatters & IRQ-safe UI callbacks verified");
 }

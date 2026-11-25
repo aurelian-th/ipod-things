@@ -18,8 +18,10 @@
 #define IAP2_LIB_REVISION_MAX   32U
 #define IAP2_LIB_MAX_PLAYLISTS  32U
 #define IAP2_LIB_MAX_PLAY_ITEMS 256U
-#define IAP2_RX_LOG_HEAD        8U
-#define IAP2_RX_LOG_TAIL        4U
+#define IAP2_RX_LOG_HEAD           8U
+#define IAP2_RX_LOG_TAIL           4U
+#define IAP2_CONNECT_PLAY_GUARD_MS 6000U
+#define IAP2_PLAY_ITEMS_DEDUP_MS   1500U
 
 #define IAP2_ART_IDLE          0U
 #define IAP2_ART_SETUP_PENDING 1U
@@ -144,7 +146,11 @@ struct iap2_session_summary {
     uint16_t lib_playlists_total;
     uint8_t lib_phase;
     uint16_t play_cmd_count;
+    uint16_t play_cmd_suppressed;
     uint16_t last_play_cmd_id;
+    char car_name[32];
+    char car_model[32];
+    char car_manufacturer[32];
     uint16_t rx_head_ids[IAP2_RX_LOG_HEAD];
     uint8_t rx_head_count;
     uint16_t rx_tail_ids[IAP2_RX_LOG_TAIL];
@@ -166,6 +172,7 @@ struct iap2_session_ops {
     void (*on_playlist_keys_request)(void *context, size_t playlist_index, uint64_t playlist_id);
     void (*on_playlist_keys_done)(void *context, size_t playlist_index, bool completed);
     void (*on_queue_keys_done)(void *context, bool completed);
+    void (*on_play_library_current)(void *context);
     void (*on_play_library_items)(void *context, const uint64_t *ids, size_t count, uint32_t start_index);
     void (*on_play_library_collection)(void *context, uint64_t collection_id, uint8_t collection_type, uint32_t start_index);
     void (*on_play_library_special)(void *context, uint8_t special_type, uint64_t start_item_id);
@@ -195,6 +202,12 @@ struct iap2_session {
     bool identified;
     bool ident_due_armed;
     uint32_t ident_due_ms;
+    uint32_t identified_ms;
+
+    uint32_t last_play_items_ms;
+    uint64_t last_play_items_target_id;
+    size_t last_play_items_count;
+    bool last_play_items_valid;
 
     bool availability_due_armed;
     uint32_t availability_due_ms;
@@ -264,6 +277,7 @@ struct iap2_session {
 
     bool now_playing;
     bool np_full;
+    bool media_synced;
     uint32_t media_mask;
     uint32_t playback_mask;
     uint64_t np_key;
@@ -301,6 +315,7 @@ void iap2_session_init(struct iap2_session *session,
                        struct iap2_link *link,
                        const struct iap2_session_ops *ops);
 void iap2_session_reset(struct iap2_session *session);
+void iap2_session_mark_media_pending(struct iap2_session *session);
 void iap2_session_set_media(struct iap2_session *session,
                             const struct iap2_media_state *media);
 void iap2_session_set_artwork(struct iap2_session *session,

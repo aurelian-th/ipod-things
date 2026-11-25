@@ -1,5 +1,5 @@
 use revisionos_core::{
-    catalog::{fetch_catalog, Catalog, DEFAULT_CATALOG_URL},
+    catalog::{fetch_merged_catalog, Catalog, DEFAULT_CATALOG_URL},
     ipod_drive::{
         detect_ipod_drives as core_detect_drives, scan_ipod_root, sha256_hex, IpodDriveSummary,
         IpodScan,
@@ -174,11 +174,17 @@ pub fn assemble_revisionos_firmware(
 }
 
 #[tauri::command]
-pub async fn fetch_revision_catalog(catalog_url: Option<String>) -> Result<Catalog, String> {
+pub async fn fetch_revision_catalog(
+    catalog_url: Option<String>,
+    extra_catalog_urls: Option<Vec<String>>,
+) -> Result<Catalog, String> {
     let url = catalog_url.unwrap_or_else(|| DEFAULT_CATALOG_URL.to_string());
-    tauri::async_runtime::spawn_blocking(move || fetch_catalog(&url).map_err(|e| e.to_string()))
-        .await
-        .map_err(|e| e.to_string())?
+    let extras = extra_catalog_urls.unwrap_or_default();
+    tauri::async_runtime::spawn_blocking(move || {
+        fetch_merged_catalog(&url, &extras).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -241,10 +247,12 @@ pub async fn apply_store_changes(
     actions: Vec<StoreAction>,
     on_event: Channel<ProgressEvent>,
     catalog_url: Option<String>,
+    extra_catalog_urls: Option<Vec<String>>,
 ) -> Result<ApplyReport, String> {
     let cancel = state.cancel.clone();
     cancel.store(false, Ordering::Release);
     let url = catalog_url.unwrap_or_else(|| DEFAULT_CATALOG_URL.to_string());
+    let extras = extra_catalog_urls.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
         let _ = on_event.send(ProgressEvent {
             step: "catalog".into(),
@@ -252,7 +260,7 @@ pub async fn apply_store_changes(
             completed: 0,
             total: actions.len() as u64,
         });
-        let catalog = fetch_catalog(&url).map_err(|e| e.to_string())?;
+        let catalog = fetch_merged_catalog(&url, &extras).map_err(|e| e.to_string())?;
         let client = build_http_client()?;
         apply_store_actions_with_progress(
             Path::new(&root),
@@ -290,7 +298,7 @@ pub async fn disk_mode_upgrade_firmware(
             );
         }
         let osos_bytes = fs::read(&osos_path).map_err(|e| e.to_string())?;
-        let catalog = fetch_catalog(&url).map_err(|e| e.to_string())?;
+        let catalog = fetch_merged_catalog(&url, &[]).map_err(|e| e.to_string())?;
         let revola_bin = assemble_revisionos_firmware(&catalog, &osos_bytes)?;
         core_upgrade_firmware(Path::new(&root), &revola_bin, None).map_err(|e| e.to_string())
     })
@@ -315,10 +323,12 @@ pub async fn migrate_ipod_drive(
     options: MigrationOptions,
     on_event: Channel<ProgressEvent>,
     catalog_url: Option<String>,
+    extra_catalog_urls: Option<Vec<String>>,
 ) -> Result<MigrationReport, String> {
     let cancel = state.cancel.clone();
     cancel.store(false, Ordering::Release);
     let url = catalog_url.unwrap_or_else(|| DEFAULT_CATALOG_URL.to_string());
+    let extras = extra_catalog_urls.unwrap_or_default();
     tauri::async_runtime::spawn_blocking(move || {
         let _ = on_event.send(ProgressEvent {
             step: "catalog".into(),
@@ -326,7 +336,7 @@ pub async fn migrate_ipod_drive(
             completed: 0,
             total: 5,
         });
-        let catalog = fetch_catalog(&url).map_err(|e| e.to_string())?;
+        let catalog = fetch_merged_catalog(&url, &extras).map_err(|e| e.to_string())?;
         let client = build_http_client()?;
         let revola_bin = if options.upgrade_firmware {
             let osos_path = app

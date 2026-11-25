@@ -53,6 +53,8 @@ export interface ExtensionItem {
   bytes: number;
   sha256: string;
   url: string;
+  source_repo?: string | null;
+  source_url?: string | null;
 }
 
 export interface BundleFile {
@@ -74,6 +76,18 @@ export interface BundleItem {
   changelog: string;
   total_bytes: number;
   files: BundleFile[];
+  source_repo?: string | null;
+  source_url?: string | null;
+}
+
+export interface RepoSourceStatus {
+  repo: string;
+  url: string;
+  ok: boolean;
+  error?: string | null;
+  added_extensions: number;
+  added_games: number;
+  added_apps: number;
 }
 
 export interface Catalog {
@@ -88,6 +102,56 @@ export interface Catalog {
   extensions: ExtensionItem[];
   games: BundleItem[];
   apps: BundleItem[];
+  sources?: RepoSourceStatus[];
+}
+
+export const CUSTOM_REPOS_STORAGE_KEY = "revisionos.custom_repos.v1";
+
+export function normalizeRepoInput(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error("Enter a repository (owner/repo[@branch]) or HTTPS catalog.json URL.");
+  }
+  if (trimmed.startsWith("https://")) {
+    if (!trimmed.endsWith(".json")) {
+      throw new Error("Custom HTTPS URL must point to a .json catalog file.");
+    }
+    return trimmed;
+  }
+  if (trimmed.startsWith("http://")) {
+    throw new Error("Only HTTPS catalog URLs are allowed.");
+  }
+  const clean = trimmed.replace(/^https:\/\/github\.com\//, "").replace(/\/+$/, "");
+  const atIdx = clean.indexOf("@");
+  const repoPart = atIdx >= 0 ? clean.slice(0, atIdx) : clean;
+  const branch = atIdx >= 0 ? clean.slice(atIdx + 1).trim() : "main";
+  if (atIdx >= 0 && !branch) {
+    throw new Error("Missing branch name after @.");
+  }
+  const segments = repoPart.split("/");
+  if (segments.length !== 2 || !segments[0] || !segments[1]) {
+    throw new Error("Use owner/repo, owner/repo@branch, or https://.../catalog.json.");
+  }
+  const validSegment = /^[A-Za-z0-9_.-]+$/;
+  if (!validSegment.test(segments[0]) || !validSegment.test(segments[1]) || !validSegment.test(branch)) {
+    throw new Error("Repository name or branch contains invalid characters.");
+  }
+  return `https://raw.githubusercontent.com/${segments[0]}/${segments[1]}/${branch}/catalog.json`;
+}
+
+export function isApiCompatible(itemApi: string, coreApi: string): boolean {
+  const parseApi = (raw: string): [number, number] | null => {
+    const parts = raw.trim().replace(/^v/i, "").split(".");
+    if (parts.length < 2) return null;
+    const maj = Number.parseInt(parts[0], 10);
+    const min = Number.parseInt(parts[1], 10);
+    if (Number.isNaN(maj) || Number.isNaN(min)) return null;
+    return [maj, min];
+  };
+  const a = parseApi(itemApi);
+  const c = parseApi(coreApi);
+  if (!a || !c) return false;
+  return a[0] === c[0] && a[1] <= c[1];
 }
 
 export interface InstalledExtension {

@@ -673,10 +673,34 @@ static void send_challenge(struct iap2_session *s, size_t cert_len)
     (void)builder_send(s, &b);
 }
 
+static void copy_param_str(char *dst, size_t cap,
+                           const uint8_t *params, size_t len, uint16_t id)
+{
+    if (dst == NULL || cap == 0U) {
+        return;
+    }
+    dst[0] = '\0';
+    size_t vlen = 0U;
+    const uint8_t *v = find_param(params, len, id, &vlen);
+    if (v == NULL || vlen == 0U) {
+        return;
+    }
+    size_t i = 0U;
+    while (i < vlen && i + 1U < cap && v[i] != '\0') {
+        dst[i] = (char)v[i];
+        i++;
+    }
+    dst[i] = '\0';
+}
+
 static void take_identification(struct iap2_session *s,
                                 const uint8_t *params, size_t len,
                                 uint32_t now_ms)
 {
+    copy_param_str(s->summary.car_name, sizeof(s->summary.car_name), params, len, 0U);
+    copy_param_str(s->summary.car_model, sizeof(s->summary.car_model), params, len, 1U);
+    copy_param_str(s->summary.car_manufacturer, sizeof(s->summary.car_manufacturer), params, len, 2U);
+
     size_t list_len = 0U;
     const uint8_t *list = find_param(params, len, 7U, &list_len);
     s->car_receives_count = 0U;
@@ -701,13 +725,14 @@ static void take_identification(struct iap2_session *s,
     s->ident_due_ms = now_ms + 30U;
 }
 
-static void accept_identification(struct iap2_session *s)
+static void accept_identification(struct iap2_session *s, uint32_t now_ms)
 {
     if (!send_empty_ctrl(s, IAP2_MSG_IDENTIFICATION_ACCEPTED)) {
         s->ident_due_armed = true;
         return;
     }
     s->identified = true;
+    s->identified_ms = now_ms;
     s->summary.identified = true;
     s->summary.phase = IAP2_SESSION_PHASE_READY;
 
@@ -1639,7 +1664,7 @@ static void send_now_playing_position(struct iap2_session *s, uint32_t now_ms)
 
 static void poll_now_playing(struct iap2_session *s, uint32_t now_ms)
 {
-    if (!s->identified || !s->now_playing) {
+    if (!s->identified || !s->now_playing || !s->media_synced) {
         return;
     }
     uint64_t key = media_track_key(&s->media);
@@ -1873,6 +1898,17 @@ static void record_rx_msg_id(struct iap2_session_summary *sum, uint16_t id)
     }
 }
 
+static bool suppress_connect_play_cmd(struct iap2_session *s, uint32_t now_ms)
+{
+    if (s->identified &&
+        (uint32_t)(now_ms - s->identified_ms) < IAP2_CONNECT_PLAY_GUARD_MS) {
+        s->summary.play_cmd_suppressed++;
+        s->np_full = true;
+        return true;
+    }
+    return false;
+}
+
 static void on_control_message(void *ctx_ptr, const struct iap2_control_message *msg)
 {
     struct dispatch_ctx *ctx = ctx_ptr;
@@ -1984,15 +2020,16 @@ static void on_control_message(void *ctx_ptr, const struct iap2_control_message 
     case IAP2_MSG_PLAY_LIBRARY_CURRENT:
         s->summary.play_cmd_count++;
         s->summary.last_play_cmd_id = msg->id;
-        if (s->ops.on_play_library_special != NULL) {
-            s->ops.on_play_library_special(s->ops.context, 0U, 0U);
+        if (!suppress_connect_play_cmd(s, now_ms) &&
+            s->ops.on_play_library_current != NULL) {
+            s->ops.on_play_library_current(s->ops.context);
         }
         break;
     case IAP2_MSG_PLAY_LIBRARY_ITEMS:
         s->summary.play_cmd_count++;
         s->summary.last_play_cmd_id = msg->id;
         v = find_param(p, plen, 0U, &n);
-        if (v != NULL && n >= 8U && s->ops.on_play_library_items != NULL) {
+        if (v != NULL && n >= 8U) {
             size_t cnt = n / 8U;
             if (cnt > IAP2_LIB_MAX_PLAY_ITEMS) {
                 cnt = IAP2_LIB_MAX_PLAY_ITEMS;
@@ -2003,14 +2040,34 @@ static void on_control_message(void *ctx_ptr, const struct iap2_control_message 
             size_t sn = 0U;
             const uint8_t *sv = find_param(p, plen, 1U, &sn);
             uint32_t start_idx = (sv != NULL && sn == 4U) ? be32(sv) : 0U;
-            s->ops.on_play_library_items(s->ops.context, s->play_items_scratch,
-                                         cnt, start_idx);
+            if (suppress_connect_play_cmd(s, now_ms)) {
+                break;
+            }
+            uint64_t target_id =
+                s->play_items_scratch[(start_idx < cnt) ? start_idx : 0U];
+            if (s->last_play_items_valid &&
+                (uint32_t)(now_ms - s->last_play_items_ms) < IAP2_PLAY_ITEMS_DEDUP_MS &&
+                s->last_play_items_target_id == target_id &&
+                s->last_play_items_count == cnt) {
+                s->summary.play_cmd_suppressed++;
+                s->np_full = true;
+                break;
+            }
+            s->last_play_items_ms = now_ms;
+            s->last_play_items_target_id = target_id;
+            s->last_play_items_count = cnt;
+            s->last_play_items_valid = true;
+            if (s->ops.on_play_library_items != NULL) {
+                s->ops.on_play_library_items(s->ops.context, s->play_items_scratch,
+                                             cnt, start_idx);
+            }
         }
         break;
     case IAP2_MSG_PLAY_LIBRARY_COLLECTION: {
         s->summary.play_cmd_count++;
         s->summary.last_play_cmd_id = msg->id;
-        if (s->ops.on_play_library_collection != NULL) {
+        if (!suppress_connect_play_cmd(s, now_ms) &&
+            s->ops.on_play_library_collection != NULL) {
             uint64_t cid = 0U;
             v = find_param(p, plen, 0U, &n);
             if (v != NULL && n == 8U) {
@@ -2035,7 +2092,8 @@ static void on_control_message(void *ctx_ptr, const struct iap2_control_message 
     case IAP2_MSG_PLAY_LIBRARY_SPECIAL: {
         s->summary.play_cmd_count++;
         s->summary.last_play_cmd_id = msg->id;
-        if (s->ops.on_play_library_special != NULL) {
+        if (!suppress_connect_play_cmd(s, now_ms) &&
+            s->ops.on_play_library_special != NULL) {
             uint8_t stype = 0U;
             v = find_param(p, plen, 1U, &n);
             if (v != NULL && n >= 1U) {
@@ -2164,6 +2222,7 @@ void iap2_session_init(struct iap2_session *session,
     session->media.sample_rate = 44100U;
     session->bt_component = -1;
     session->next_transfer_id = 0x80U;
+    session->media_synced = true;
     iap2_control_stream_init(&session->control_stream,
                              session->control_rx_buf,
                              sizeof(session->control_rx_buf));
@@ -2198,6 +2257,7 @@ void iap2_session_reset(struct iap2_session *session)
     session->prng_state = prng;
     session->bt_component = -1;
     session->next_transfer_id = 0x80U;
+    session->media_synced = true;
     iap2_control_stream_init(&session->control_stream,
                              session->control_rx_buf,
                              sizeof(session->control_rx_buf));
@@ -2222,6 +2282,16 @@ void iap2_session_reset(struct iap2_session *session)
     }
 }
 
+void iap2_session_mark_media_pending(struct iap2_session *session)
+{
+    if (session == NULL) {
+        return;
+    }
+    session->media_synced = false;
+    session->media.has_track = false;
+    session->media.play_state = IAP2_PLAY_STOPPED;
+}
+
 void iap2_session_set_media(struct iap2_session *session,
                             const struct iap2_media_state *media)
 {
@@ -2230,6 +2300,7 @@ void iap2_session_set_media(struct iap2_session *session,
     }
     uint32_t new_rate = (media->sample_rate != 0U) ? media->sample_rate : 44100U;
     session->media = *media;
+    session->media_synced = true;
     session->media.device_name[sizeof(session->media.device_name) - 1U] = '\0';
     session->media.title[sizeof(session->media.title) - 1U] = '\0';
     session->media.artist[sizeof(session->media.artist) - 1U] = '\0';
@@ -2521,7 +2592,7 @@ void iap2_session_tick(struct iap2_session *session, uint32_t now_ms)
 
     if (session->ident_due_armed && time_reached(now_ms, session->ident_due_ms)) {
         session->ident_due_armed = false;
-        accept_identification(session);
+        accept_identification(session, now_ms);
     }
 
     if (session->availability_due_armed &&

@@ -8,7 +8,9 @@ import {
   diskModeUpgradeFirmware,
   fetchRevisionCatalog,
   getCachedFirmwareStatus,
+  loadCustomRepoUrls,
   pickIpodDrive,
+  saveCustomRepoUrls,
   scanIpodDrive,
 } from "../lib/store";
 import {
@@ -26,6 +28,8 @@ import {
   formatBytes,
   getBundleStatus,
   getExtensionStatus,
+  isApiCompatible,
+  normalizeRepoInput,
 } from "../lib/storeLogic";
 import { Button } from "./ui/Button";
 import { InstallerScreen } from "./ui/InstallerScreen";
@@ -65,6 +69,9 @@ const StoreScreen: React.FC<IStoreScreenProps> = ({ onBack, onOpenMigrate }) => 
   const [logLines, setLogLines] = React.useState<string[]>([]);
   const [statusMessage, setStatusMessage] = React.useState("");
   const [error, setError] = React.useState("");
+  const [customRepos, setCustomRepos] = React.useState<string[]>(() => loadCustomRepoUrls());
+  const [repoInput, setRepoInput] = React.useState("");
+  const [showRepos, setShowRepos] = React.useState(false);
 
   const appendLog = React.useCallback((line: string) => {
     const time = new Date().toLocaleTimeString();
@@ -72,12 +79,13 @@ const StoreScreen: React.FC<IStoreScreenProps> = ({ onBack, onOpenMigrate }) => 
   }, []);
 
   const refreshAll = React.useCallback(
-    async (preferredRoot?: string) => {
+    async (preferredRoot?: string, reposOverride?: string[]) => {
       setLoading(true);
       setError("");
       try {
+        const activeRepos = reposOverride ?? customRepos;
         const [cat, foundDrives, cache] = await Promise.all([
-          fetchRevisionCatalog(),
+          fetchRevisionCatalog(undefined, activeRepos),
           detectIpodDrives(),
           getCachedFirmwareStatus(),
         ]);
@@ -98,12 +106,37 @@ const StoreScreen: React.FC<IStoreScreenProps> = ({ onBack, onOpenMigrate }) => 
         setLoading(false);
       }
     },
-    [selectedRoot],
+    [customRepos, selectedRoot],
   );
 
   React.useEffect(() => {
     void refreshAll();
   }, [refreshAll]);
+
+  const handleAddRepo = async () => {
+    setError("");
+    try {
+      const normalized = normalizeRepoInput(repoInput);
+      if (customRepos.includes(normalized)) {
+        setError("Repository is already added.");
+        return;
+      }
+      const next = [...customRepos, normalized];
+      saveCustomRepoUrls(next);
+      setCustomRepos(next);
+      setRepoInput("");
+      await refreshAll(undefined, next);
+    } catch (err) {
+      setError(errorDetail(err));
+    }
+  };
+
+  const handleRemoveRepo = async (url: string) => {
+    const next = customRepos.filter((entry) => entry !== url);
+    saveCustomRepoUrls(next);
+    setCustomRepos(next);
+    await refreshAll(undefined, next);
+  };
 
   const handlePickDrive = async () => {
     try {
@@ -263,8 +296,92 @@ const StoreScreen: React.FC<IStoreScreenProps> = ({ onBack, onOpenMigrate }) => 
                 </Button.Label>
               </Button.Root>
             )}
+            <Button.Root
+              size="compact"
+              disabled={busy || loading}
+              onClick={() => setShowRepos((v) => !v)}
+            >
+              <Button.Label>
+                {showRepos
+                  ? "Hide repos"
+                  : `Repositories (${1 + customRepos.length})`}
+              </Button.Label>
+            </Button.Root>
           </div>
         </div>
+
+        {showRepos && (
+          <section className="installer-well space-y-3 rounded-xl p-4 text-[12px]">
+            <div>
+              <h2 className="text-[13px] font-bold text-ink">Extension &amp; homebrew repositories</h2>
+              <p className="mt-0.5 text-body">
+                Add custom Cydia-style Git repositories using <code className="text-ink">owner/repo</code>,{" "}
+                <code className="text-ink">owner/repo@branch</code>, or an HTTPS <code className="text-ink">catalog.json</code> URL. Official items always stay authoritative, and all downloads verify SHA-256 checksums.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                value={repoInput}
+                onChange={(e) => setRepoInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleAddRepo();
+                  }
+                }}
+                placeholder="owner/repo or https://.../catalog.json"
+                aria-label="Custom repository URL"
+                className="min-w-64 flex-1 rounded-lg border border-[#c2bfba] bg-white px-3 py-1.5 text-[12px] text-ink outline-none focus:border-focus"
+              />
+              <Button.Root
+                size="compact"
+                disabled={busy || loading || !repoInput.trim()}
+                onClick={() => void handleAddRepo()}
+              >
+                <Button.Label>Add source</Button.Label>
+              </Button.Root>
+            </div>
+            {catalog?.sources && catalog.sources.length > 0 && (
+              <div className="space-y-1.5">
+                {catalog.sources.map((src, idx) => (
+                  <div
+                    key={src.url}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#dedbd5] bg-white px-3 py-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span className="font-semibold text-ink">{src.repo}</span>
+                      {idx === 0 ? (
+                        <span className="ml-2 rounded bg-[#e8dfd1] px-1.5 py-0.5 text-[10px] font-medium text-[#704915]">
+                          Official
+                        </span>
+                      ) : src.ok ? (
+                        <span className="ml-2 rounded bg-[#eef7ef] px-1.5 py-0.5 text-[10px] font-medium text-[#225129]">
+                          +{src.added_extensions} ext, +{src.added_games} games, +{src.added_apps} apps
+                        </span>
+                      ) : (
+                        <span className="ml-2 rounded bg-[#fbeeed] px-1.5 py-0.5 text-[10px] font-medium text-[#aa3e36]">
+                          Failed
+                        </span>
+                      )}
+                      <p className="truncate text-[11px] text-muted">{src.url}</p>
+                      {src.error && <p className="text-[11px] text-[#aa3e36]">{src.error}</p>}
+                    </div>
+                    {idx > 0 && (
+                      <Button.Root
+                        size="compact"
+                        disabled={busy || loading}
+                        onClick={() => void handleRemoveRepo(src.url)}
+                      >
+                        <Button.Label>Remove</Button.Label>
+                      </Button.Root>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
 
         {scan?.migration_recommended && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#bd8b3d] bg-[#fdf7ec] p-3.5 text-[12px]">
@@ -510,6 +627,7 @@ const StoreScreen: React.FC<IStoreScreenProps> = ({ onBack, onOpenMigrate }) => 
                   ) : (
                     visibleExtensions.map((ext) => {
                       const st = getExtensionStatus(ext, scan);
+                      const compat = !catalog || isApiCompatible(ext.api, catalog.firmware.api);
                       return (
                         <article
                           key={ext.id}
@@ -518,7 +636,14 @@ const StoreScreen: React.FC<IStoreScreenProps> = ({ onBack, onOpenMigrate }) => 
                           <div>
                             <div className="flex flex-wrap items-start justify-between gap-2">
                               <div>
-                                <h3 className="text-[13px] font-bold text-ink">{ext.name}</h3>
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <h3 className="text-[13px] font-bold text-ink">{ext.name}</h3>
+                                  {ext.source_repo && (
+                                    <span className="rounded bg-[#eef4fb] px-1.5 py-0.5 text-[10px] font-medium text-[#22507d]">
+                                      {ext.source_repo}
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="text-[11px] text-muted">
                                   v{ext.version} · {ext.author} · {formatBytes(ext.bytes)}
                                 </p>
@@ -533,7 +658,16 @@ const StoreScreen: React.FC<IStoreScreenProps> = ({ onBack, onOpenMigrate }) => 
                           </div>
 
                           <div className="flex items-center justify-between gap-2 border-t border-[#efece6] pt-2.5">
-                            {st.status === "update_available" ? (
+                            {!compat ? (
+                              <>
+                                <span className="text-[11px] font-medium text-[#aa3e36]">
+                                  Requires API {ext.api}
+                                </span>
+                                <Button.Root size="compact" disabled>
+                                  <Button.Label>Incompatible</Button.Label>
+                                </Button.Root>
+                              </>
+                            ) : st.status === "update_available" ? (
                               <>
                                 <span className="text-[11px] font-medium text-[#704915]">
                                   v{st.installed} -&gt; v{st.latest}

@@ -56,6 +56,7 @@ pub async fn install(
     selected_games: Option<Vec<String>>,
     selected_apps: Option<Vec<String>>,
     catalog_url: Option<String>,
+    extra_catalog_urls: Option<Vec<String>>,
     on_event: Channel<InstallEvent>,
 ) -> std::result::Result<InstallResult, String> {
     let operation = app
@@ -82,6 +83,7 @@ pub async fn install(
             selected_games.unwrap_or_default(),
             selected_apps.unwrap_or_default(),
             catalog_url,
+            extra_catalog_urls.unwrap_or_default(),
             on_event,
         )
         .map_err(|e| e.to_string())
@@ -99,6 +101,7 @@ fn run(
     selected_games: Vec<String>,
     selected_apps: Vec<String>,
     catalog_url: Option<String>,
+    extra_catalog_urls: Vec<String>,
     channel: Channel<InstallEvent>,
 ) -> Result<InstallResult> {
     let ipsw = app.state::<FirmwareState>().selected(&firmware_sha256)?;
@@ -180,10 +183,11 @@ fn run(
         )?;
     }
     let outcome = (|| {
-        let catalog = revisionos_core::catalog::fetch_catalog(
+        let catalog = revisionos_core::catalog::fetch_merged_catalog(
             catalog_url
                 .as_deref()
                 .unwrap_or(revisionos_core::catalog::DEFAULT_CATALOG_URL),
+            &extra_catalog_urls,
         )?;
         let extras = crate::store::collect_selected_downloads(
             &catalog,

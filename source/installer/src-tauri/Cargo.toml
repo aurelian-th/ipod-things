@@ -1,6 +1,6 @@
 [package]
 name = "revisionos-installer"
-version = "0.3.0"
+version = "0.3.1"
 license = "GPL-3.0-only"
 description = "RevisionOS installer for iPod Classic"
 edition = "2021"
@@ -14,8 +14,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-reprise-bundle = { path = "../../host/crates/reprise-bundle" }
-reprise-device = { path = "../../host/crates/reprise-device" }
+reprise-bundle = { path = "../../archive/upstream/osos-lab/host/crates/reprise-bundle" }
+reprise-device = { path = "../../archive/upstream/osos-lab/host/crates/reprise-device" }
 revisionos-core = { path = "../crates/revisionos-core" }
 # Build reprise-device's libusb dependency for each target architecture.
 rusb = { version = "0.9.4", features = ["vendored"] }

@@ -91,7 +91,7 @@ pub(super) fn same_port(a: &DeviceInfo, bus: u8, ports: &[u8]) -> bool {
 }
 
 fn driver_pending(error: rusb::Error) -> bool {
-    cfg!(windows)
+    let win = cfg!(windows)
         && matches!(
             error,
             rusb::Error::NotSupported
@@ -99,7 +99,13 @@ fn driver_pending(error: rusb::Error) -> bool {
                 | rusb::Error::Access
                 | rusb::Error::Io
                 | rusb::Error::NotFound
-        )
+        );
+    let mac = cfg!(target_os = "macos")
+        && matches!(
+            error,
+            rusb::Error::Access | rusb::Error::Busy | rusb::Error::NotFound
+        );
+    win || mac
 }
 
 pub(super) fn open_bulk(
@@ -182,9 +188,14 @@ pub(super) fn open_bulk(
                 Ok(handle) => handle,
                 Err(error) if driver_pending(error) => {
                     if last_error != Some(error) {
-                        log(format!(
-                            "Could not open/claim the helper's WinUSB interface yet: {error}"
-                        ));
+                        let hint = if cfg!(windows) {
+                            "Could not open/claim the helper's WinUSB interface yet"
+                        } else if cfg!(target_os = "macos") {
+                            "Could not claim the helper's USB interface yet (waiting on macOS/AMPDeviceDiscoveryAgent)"
+                        } else {
+                            "Could not open/claim the helper's USB interface yet"
+                        };
+                        log(format!("{hint}: {error}"));
                     }
                     last_error = Some(error);
                     continue;
@@ -202,7 +213,17 @@ pub(super) fn open_bulk(
         }
         if Instant::now() >= deadline {
             if let Some(error) = last_error {
-                return Err(invalid(format!("Upload helper {:04x}:{:04x} appeared, but Windows could not open its WinUSB interface: {error}", usb.vendor_id, usb.product_id)));
+                let platform_msg = if cfg!(windows) {
+                    "Windows could not open its WinUSB interface"
+                } else if cfg!(target_os = "macos") {
+                    "macOS could not claim its USB interface (close Finder or run 'killall AMPDeviceDiscoveryAgent')"
+                } else {
+                    "the system could not claim its USB interface"
+                };
+                return Err(invalid(format!(
+                    "Upload helper {:04x}:{:04x} appeared, but {platform_msg}: {error}",
+                    usb.vendor_id, usb.product_id
+                )));
             }
             if !other_ports.is_empty() {
                 return Err(invalid(format!("Upload helper appeared on a different USB bus/port; expected bus {}, port {:?}; observed {other_ports:?}", info.selector.bus, info.port_path)));

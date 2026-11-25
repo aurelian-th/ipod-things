@@ -1,6 +1,7 @@
 import { backendAvailable, createChannel, invoke } from "./backend.ts";
 import { errorDetail } from "./errors.ts";
 import { appendSessionLog, getSessionLog } from "./sessionLog.ts";
+import { loadCustomRepoUrls } from "./store.ts";
 import type { ContentSelection } from "./storeLogic.ts";
 
 export interface FirmwareInfo {
@@ -139,6 +140,7 @@ export function startInstallation(
       selectedGames: selection?.games ?? [],
       selectedApps: selection?.apps ?? [],
       catalogUrl: null,
+      extraCatalogUrls: loadCustomRepoUrls(),
       onEvent: channel,
     });
   };

@@ -13,6 +13,8 @@ import {
   filterExtensions,
   getExtensionStatus,
   importSelectionFromScan,
+  isApiCompatible,
+  normalizeRepoInput,
 } from "../src/lib/storeLogic.ts";
 
 const catalogPath = path.resolve(import.meta.dirname, "../../ipod-things/catalog.json");
@@ -72,12 +74,14 @@ test("computeUpdatesAvailable detects outdated extension versions and hash chang
     apps: [],
   };
 
+  const expectedLyricsVersion = realCatalog.extensions.find((e) => e.id === "lyrics").version;
+  const expectedDoodleVersion = realCatalog.games.find((g) => g.id === "doodlejump").version;
   const updates = computeUpdatesAvailable(realCatalog, scan);
   assert.deepEqual(
     updates.map((u) => [u.id, u.installedVersion, u.latestVersion]),
     [
-      ["lyrics", "0.1.0", "0.2.0"],
-      ["doodlejump", "0.2.0", "1.3.0"],
+      ["lyrics", "0.1.0", expectedLyricsVersion],
+      ["doodlejump", "0.2.0", expectedDoodleVersion],
     ],
   );
   assert.deepEqual(buildUpdateAllActions(realCatalog, scan), [
@@ -146,5 +150,27 @@ test("importSelectionFromScan and describeDetectedLayout import RepriseOS and Re
   assert.deepEqual(imported.games, ["2048"]);
   assert.ok(imported.extensions.includes("iap2"));
   assert.ok(imported.extensions.includes("homebrew"));
+});
+
+test("normalizeRepoInput and isApiCompatible validate custom Git repositories", () => {
+  assert.equal(
+    normalizeRepoInput("alice/ipod-mods"),
+    "https://raw.githubusercontent.com/alice/ipod-mods/main/catalog.json",
+  );
+  assert.equal(
+    normalizeRepoInput("alice/ipod-mods@beta"),
+    "https://raw.githubusercontent.com/alice/ipod-mods/beta/catalog.json",
+  );
+  assert.equal(
+    normalizeRepoInput("https://example.com/custom/catalog.json"),
+    "https://example.com/custom/catalog.json",
+  );
+  assert.throws(() => normalizeRepoInput("http://example.com/catalog.json"));
+  assert.throws(() => normalizeRepoInput("not-a-repo"));
+
+  assert.equal(isApiCompatible("1.74", "1.74"), true);
+  assert.equal(isApiCompatible("1.70", "1.74"), true);
+  assert.equal(isApiCompatible("1.80", "1.74"), false);
+  assert.equal(isApiCompatible("2.0", "1.74"), false);
 });
 

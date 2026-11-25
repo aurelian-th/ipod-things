@@ -1,14 +1,38 @@
 import { backendAvailable, createChannel, invoke } from "./backend.ts";
-import type {
-  CachedFirmwareStatus,
-  Catalog,
-  IpodDriveSummary,
-  IpodScan,
-  MigrationOptions,
-  MigrationReport,
-  ProgressEvent,
-  StoreAction,
+import {
+  CUSTOM_REPOS_STORAGE_KEY,
+  type CachedFirmwareStatus,
+  type Catalog,
+  type IpodDriveSummary,
+  type IpodScan,
+  type MigrationOptions,
+  type MigrationReport,
+  type ProgressEvent,
+  type StoreAction,
 } from "./storeLogic.ts";
+
+export function loadCustomRepoUrls(): string[] {
+  if (typeof globalThis.localStorage === "undefined") return [];
+  try {
+    const raw = globalThis.localStorage.getItem(CUSTOM_REPOS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveCustomRepoUrls(urls: string[]): void {
+  if (typeof globalThis.localStorage === "undefined") return;
+  try {
+    globalThis.localStorage.setItem(CUSTOM_REPOS_STORAGE_KEY, JSON.stringify(urls));
+  } catch {
+    // Ignore storage quota / privacy mode failures in desktop WebView.
+  }
+}
 
 export interface ApplyReport {
   installed_extensions: string[];
@@ -31,12 +55,16 @@ export interface NorBackupEntry {
   bytes: number;
 }
 
-export async function fetchRevisionCatalog(catalogUrl?: string): Promise<Catalog> {
+export async function fetchRevisionCatalog(
+  catalogUrl?: string,
+  extraCatalogUrls?: string[],
+): Promise<Catalog> {
   if (!backendAvailable()) {
     throw new Error("Open the desktop installer to fetch the catalog.");
   }
   return invoke<Catalog>("fetch_revision_catalog", {
     catalogUrl: catalogUrl ?? null,
+    extraCatalogUrls: extraCatalogUrls ?? loadCustomRepoUrls(),
   });
 }
 
@@ -74,6 +102,7 @@ export async function applyStoreChanges(
   actions: StoreAction[],
   onProgress?: (event: ProgressEvent) => void,
   catalogUrl?: string,
+  extraCatalogUrls?: string[],
 ): Promise<ApplyReport> {
   if (!backendAvailable()) {
     throw new Error("Open the desktop installer to modify iPod files.");
@@ -84,6 +113,7 @@ export async function applyStoreChanges(
     root,
     actions,
     catalogUrl: catalogUrl ?? null,
+    extraCatalogUrls: extraCatalogUrls ?? loadCustomRepoUrls(),
     onEvent,
   });
 }
@@ -131,6 +161,7 @@ export async function migrateIpodDrive(
   options: MigrationOptions,
   onProgress?: (event: ProgressEvent) => void,
   catalogUrl?: string,
+  extraCatalogUrls?: string[],
 ): Promise<MigrationReport> {
   if (!backendAvailable()) {
     throw new Error("Open the desktop installer to migrate your iPod.");
@@ -141,6 +172,7 @@ export async function migrateIpodDrive(
     root,
     options,
     catalogUrl: catalogUrl ?? null,
+    extraCatalogUrls: extraCatalogUrls ?? loadCustomRepoUrls(),
     onEvent,
   });
 }

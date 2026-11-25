@@ -464,9 +464,11 @@ where
     }
 
     let scan = scan_ipod_root(root)?;
-    let revola = root.join("Revola");
+    let revola = crate::ipod_drive::resolve_ci_dir(root, "Revola");
+    let ipod_control = crate::ipod_drive::resolve_ci_dir(root, "iPod_Control");
+    let games_ro_dir = crate::ipod_drive::resolve_ci_dir(&ipod_control, "Games_RO");
     for sub in ["Firmware", "Extensions", "Games", "Apps"] {
-        fs::create_dir_all(revola.join(sub))?;
+        fs::create_dir_all(crate::ipod_drive::resolve_ci_dir(&revola, sub))?;
     }
 
     let mut report = MigrationReport {
@@ -528,8 +530,8 @@ where
             if is_cancelled() {
                 return Err(SyncError::Cancelled);
             }
-            let src_dir = root.join("iPod_Control/Games_RO").join(&game.folder);
-            let dst_dir = revola.join("Games").join(&game.folder);
+            let src_dir = games_ro_dir.join(&game.folder);
+            let dst_dir = crate::ipod_drive::resolve_ci_dir(&revola, "Games").join(&game.folder);
             if src_dir.is_dir() && !dst_dir.exists() {
                 on_progress(ProgressEvent {
                     step: "games".into(),
@@ -781,6 +783,8 @@ mod tests {
                     bytes: hsc_bytes.len() as u64,
                     sha256: sha256_hex(&hsc_bytes),
                     url: "https://example.invalid/hsc.rvx".into(),
+                    source_repo: None,
+                    source_url: None,
                 },
                 ExtensionItem {
                     id: "homebrew".into(),
@@ -798,6 +802,8 @@ mod tests {
                     bytes: hb_bytes.len() as u64,
                     sha256: sha256_hex(&hb_bytes),
                     url: "https://example.invalid/homebrew.rvx".into(),
+                    source_repo: None,
+                    source_url: None,
                 },
             ],
             games: vec![],
@@ -818,7 +824,10 @@ mod tests {
                     sha256: sha256_hex(&dice_plist),
                     url: "https://example.invalid/dice/Manifest.plist".into(),
                 }],
+                source_repo: None,
+                source_url: None,
             }],
+            sources: vec![],
         };
         (catalog, blobs)
     }
@@ -952,5 +961,38 @@ mod tests {
         assert!(!ipod.join("revola.bin").exists());
         assert!(!ipod.join("loader.bin").exists());
         assert_eq!(report.cleaned_legacy_files, vec!["/revola.bin", "/loader.bin"]);
+    }
+
+    #[test]
+    fn migrates_case_insensitive_revola_and_games_ro_folders() {
+        let (catalog, _) = make_synthetic_assets();
+
+        let dir = tempdir().unwrap();
+        let ipod = dir.path();
+        fs::create_dir_all(ipod.join("ipod_control/games_ro/2048")).unwrap();
+        fs::create_dir_all(ipod.join("revola")).unwrap();
+        fs::write(
+            ipod.join("ipod_control/games_ro/2048/Manifest.plist"),
+            SAMPLE_EAPP_PLIST,
+        )
+        .unwrap();
+
+        let report = migrate_to_revisionos(
+            ipod,
+            &catalog,
+            Some(b"revision-bin"),
+            &MigrationOptions {
+                migrate_games_ro: true,
+                cleanup_legacy_bins: true,
+                upgrade_firmware: false,
+                update_extensions: false,
+            },
+            |_| unreachable!(),
+        )
+        .unwrap();
+
+        assert_eq!(report.migrated_games, vec!["2048"]);
+        assert!(ipod.join("revola/Extensions").is_dir());
+        assert!(ipod.join("revola/Games/2048/Manifest.plist").is_file());
     }
 }

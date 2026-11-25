@@ -5,20 +5,32 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define LRC_MAX_LINES    300U
-#define LRC_MAX_LINE_LEN 96U
-#define LRC_LINE_HEIGHT  22
-#define LRC_FILE_MAX     16384U
-#define LRC_LINE_NONE    0xffffffffu
+#define LRC_MAX_LINES     300U
+#define LRC_MAX_LINE_LEN  128U
+#define LRC_MAX_ROWS      600U
+#define LRC_LINE_HEIGHT   22
+#define LRC_WRAP_WIDTH_PX 288U
+#define LRC_FILE_MAX      16384U
+#define LRC_LINE_NONE     0xffffffffu
 
 struct lrc_line {
     uint32_t timestamp_ms;
     char text[LRC_MAX_LINE_LEN];
 };
 
+struct lrc_row {
+    uint16_t line_idx;
+    uint8_t offset;
+    uint8_t len;
+};
+
 struct lrc_state {
     struct lrc_line lines[LRC_MAX_LINES];
     uint32_t line_count;
+    struct lrc_row rows[LRC_MAX_ROWS];
+    uint32_t row_count;
+    uint16_t line_first_row[LRC_MAX_LINES];
+    uint8_t line_row_count[LRC_MAX_LINES];
     uint32_t current_line;
     int32_t scroll_offset_px;
     int32_t target_scroll_offset_px;
@@ -33,6 +45,8 @@ struct lrc_state {
 
 void lrc_state_reset(struct lrc_state *st);
 uint32_t lrc_parse(struct lrc_state *st, const char *content, uint32_t length);
+uint32_t lrc_build_wrap(struct lrc_state *st, uint32_t max_px);
+int32_t lrc_scroll_for_line(const struct lrc_state *st, uint32_t line_idx);
 uint32_t lrc_find_active_line(const struct lrc_line *lines, uint32_t line_count,
                               uint32_t current_ms);
 int lrc_update_playback(struct lrc_state *st, uint32_t current_ms);

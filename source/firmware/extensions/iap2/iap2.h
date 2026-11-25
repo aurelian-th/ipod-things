@@ -16,6 +16,7 @@ enum iap2_protocol_mode {
 
 struct iap2_diag_state {
     uint8_t protocol_mode;      /* enum iap2_protocol_mode */
+    uint8_t diag_logging;       /* 0 = Off, 1 = write /Revola/Data/Extensions/iap2/diag.txt */
     uint8_t usb_connected;      /* 1 = USBHID Activate currently connected */
     uint8_t tap_desired;        /* 0 = iAP1 passthrough, 1 = arm iAP2 on HID activate */
     uint8_t tap_active;         /* 1 = active session currently tapping HID SET_REPORT */
@@ -40,6 +41,7 @@ struct iap2_diag_state {
 /* Coherent snapshot copied under IRQ mask for safe UI formatting outside lock */
 struct iap2_diag_snapshot {
     uint8_t protocol_mode;
+    uint8_t diag_logging;
     uint8_t usb_connected;
     uint8_t tap_desired;
     uint8_t tap_active;
@@ -70,5 +72,8 @@ const char *iap2_ui_settings_caption(const struct iap2_diag_snapshot *snap);
 const char *iap2_ui_protocol_caption(const struct iap2_diag_snapshot *snap);
 const char *iap2_ui_status_row(const struct iap2_diag_snapshot *snap);
 const char *iap2_ui_status_caption(const struct iap2_diag_snapshot *snap);
+const char *iap2_ui_diag_caption(const struct iap2_diag_snapshot *snap);
+const char *iap2_ui_diag_line(const struct iap2_diag_snapshot *snap, size_t row_index);
+size_t iap2_format_diag_report(const struct iap2_diag_snapshot *snap, char *buf, size_t cap);
 
 #endif /* IAP2_H */

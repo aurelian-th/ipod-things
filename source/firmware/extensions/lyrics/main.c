@@ -3,6 +3,7 @@
 /* Synced and unsynced .lrc lyrics viewer in song and Now Playing context menus.
  * Ported from RepriseOS payload/lyrics.c to the RevolaOS canvas and media APIs. */
 
+#include "embedded.h"
 #include "lrc.h"
 #include "osos-2.0.5.h"
 #include "rv_api.h"
@@ -39,6 +40,108 @@ static void copy_field(char *dst, size_t cap, const char *src)
         }
     }
     dst[i] = '\0';
+}
+
+static int str_eq(const char *a, const char *b)
+{
+    size_t i = 0U;
+
+    while (a[i] != '\0' && b[i] != '\0') {
+        if (a[i] != b[i])
+            return 0;
+        i++;
+    }
+    return a[i] == b[i];
+}
+
+static void normalize_track_path(char *dst, size_t cap, const char *src,
+                                 char sep, int leading_sep)
+{
+    size_t pos = 0U;
+
+    if (!dst || cap == 0U)
+        return;
+    if (!src || src[0] == '\0') {
+        dst[0] = '\0';
+        return;
+    }
+    while (*src == ':' || *src == '/' || *src == '\\')
+        src++;
+    if (leading_sep && pos + 1U < cap)
+        dst[pos++] = sep;
+    while (*src != '\0' && pos + 1U < cap) {
+        char ch = *src++;
+        dst[pos++] = (ch == ':' || ch == '/' || ch == '\\') ? sep : ch;
+    }
+    dst[pos] = '\0';
+}
+
+static int legacy_lyr_read(void *ctx, void *dst, size_t len, size_t *out_got)
+{
+    uint32_t got = 0U;
+    int rc = File_ReadLegacyHandle(ctx, dst, (uint32_t)len, 0U, &got);
+
+    if (out_got)
+        *out_got = (size_t)got;
+    return (rc == 0 || rc == (int)FileError_EndOfFile) && got > 0U;
+}
+
+static int legacy_lyr_seek(void *ctx, uint64_t offset)
+{
+    return File_SeekLegacyHandle(ctx, offset) == 0;
+}
+
+static int try_open_embedded(struct lrc_state *st, const void *item, char *scratch)
+{
+    char raw_path[258];
+    uint32_t p[NativeString_bytes / 4];
+    struct NativeString *pns = (struct NativeString *)p;
+
+    raw_path[0] = '\0';
+    MediaItem_GetPath(pns, (struct MediaItem *)(uintptr_t)item);
+    copy_field(raw_path, sizeof(raw_path), NativeString_GetUtf8(pns));
+    NativeString_Destroy(pns);
+    if (raw_path[0] == '\0')
+        return 0;
+
+    char candidates[5][258];
+    copy_field(candidates[0], sizeof(candidates[0]), raw_path);
+    normalize_track_path(candidates[1], sizeof(candidates[1]), raw_path, '/', 0);
+    normalize_track_path(candidates[2], sizeof(candidates[2]), raw_path, '/', 1);
+    normalize_track_path(candidates[3], sizeof(candidates[3]), raw_path, '\\', 0);
+    normalize_track_path(candidates[4], sizeof(candidates[4]), raw_path, '\\', 1);
+
+    for (size_t i = 0U; i < 5U; i++) {
+        if (candidates[i][0] == '\0')
+            continue;
+        int dup = 0;
+        for (size_t prev = 0U; prev < i; prev++) {
+            if (str_eq(candidates[prev], candidates[i])) {
+                dup = 1;
+                break;
+            }
+        }
+        if (dup)
+            continue;
+
+        struct legacy_path lp;
+        lp.volume = 0U;
+        copy_field(lp.text, sizeof(lp.text), candidates[i]);
+        void *handle = NULL;
+        if (File_OpenLegacyPath(&lp, FORK_DATA, 1, &handle) != 0 || !handle)
+            continue;
+
+        struct lyrics_reader reader = {
+            .context = handle,
+            .read = legacy_lyr_read,
+            .seek = legacy_lyr_seek,
+        };
+        int ok = lyrics_extract_embedded(&reader, st, scratch, LRC_FILE_MAX);
+        File_CloseLegacyHandle(handle);
+        if (ok && st->line_count > 0U)
+            return 1;
+    }
+    return 0;
 }
 
 static int try_open_and_parse(struct lrc_state *st, const char *rel_path, char *buf)
@@ -109,21 +212,23 @@ static void load_for_item(struct lrc_state *st, const void *item)
     if (!lrc_buf)
         return;
 
-    count = lrc_build_candidates(st->song_artist, st->song_title, candidates);
-    for (size_t i = 0U; i < count; i++) {
-        if (try_open_and_parse(st, candidates[i], lrc_buf))
-            break;
-        /* Also try forward slashes for FAT path compatibility. */
-        char slash[160];
-        size_t j = 0U;
-        while (candidates[i][j] && j + 1U < sizeof(slash)) {
-            slash[j] = (candidates[i][j] == '\\') ? '/' : candidates[i][j];
-            j++;
-        }
-        slash[j] = '\0';
-        if (strcmp(slash, candidates[i]) != 0 &&
-            try_open_and_parse(st, slash, lrc_buf)) {
-            break;
+    if (!try_open_embedded(st, item, lrc_buf)) {
+        count = lrc_build_candidates(st->song_artist, st->song_title, candidates);
+        for (size_t i = 0U; i < count; i++) {
+            if (try_open_and_parse(st, candidates[i], lrc_buf))
+                break;
+            /* Also try forward slashes for FAT path compatibility. */
+            char slash[160];
+            size_t j = 0U;
+            while (candidates[i][j] && j + 1U < sizeof(slash)) {
+                slash[j] = (candidates[i][j] == '\\') ? '/' : candidates[i][j];
+                j++;
+            }
+            slash[j] = '\0';
+            if (strcmp(slash, candidates[i]) != 0 &&
+                try_open_and_parse(st, slash, lrc_buf)) {
+                break;
+            }
         }
     }
 
@@ -150,7 +255,7 @@ static void release_state(void)
 static void snap_to_active(struct lrc_state *st, int immediate)
 {
     int32_t target = (st->has_synced_timestamps && st->current_line != LRC_LINE_NONE)
-                         ? (int32_t)(st->current_line * LRC_LINE_HEIGHT)
+                         ? lrc_scroll_for_line(st, st->current_line)
                          : 0;
     st->target_scroll_offset_px = target;
     if (immediate)
@@ -280,28 +385,44 @@ static void draw(const struct rv_context *ctx, const struct rv_gfx *gfx, int wid
 
     rv_canvas_begin(&canvas, gfx, width, height);
 
-    if (!st || st->line_count == 0U) {
-        rv_canvas_text(&canvas, 0, 60, width, 24, "No Lyrics Found", 1,
+    if (!st || st->row_count == 0U) {
+        rv_canvas_text(&canvas, 0, 56, width, 24, "No Lyrics Found", 1,
                        RV_ALIGN_CENTER, RV_CANVAS_TEXT);
-        rv_canvas_text(&canvas, 0, 95, width, 20, "Place .lrc files in /Lyrics/", 0,
+        rv_canvas_text(&canvas, 8, 92, width - 16, 20,
+                       "Add embedded lyrics or .lrc in /Lyrics/", 0,
                        RV_ALIGN_CENTER, RV_CANVAS_MUTED);
         if (st && st->song_title[0]) {
-            rv_canvas_text(&canvas, 0, 130, width, 20, st->song_title, 0,
+            rv_canvas_text(&canvas, 8, 128, width - 16, 20, st->song_title, 0,
                            RV_ALIGN_CENTER, RV_CANVAS_INACTIVE);
         }
         return;
     }
 
     int center_y = (height - LRC_LINE_HEIGHT) / 2;
-    for (uint32_t i = 0U; i < st->line_count; i++) {
-        int y = center_y + (int)i * LRC_LINE_HEIGHT - st->scroll_offset_px;
+    for (uint32_t r = 0U; r < st->row_count; r++) {
+        int y = center_y + (int)r * LRC_LINE_HEIGHT - st->scroll_offset_px;
         if (y + LRC_LINE_HEIGHT < 0 || y >= height)
             continue;
 
-        int active = (st->current_line != LRC_LINE_NONE && i == st->current_line);
+        const struct lrc_row *row = &st->rows[r];
+        if (row->len == 0U)
+            continue;
+
+        char seg[LRC_MAX_LINE_LEN];
+        size_t len = row->len;
+        if (len >= sizeof(seg))
+            len = sizeof(seg) - 1U;
+        memcpy(seg, st->lines[row->line_idx].text + row->offset, len);
+        seg[len] = '\0';
+
+        int active = (st->current_line != LRC_LINE_NONE &&
+                      row->line_idx == st->current_line);
+        /* Wrapped lines must keep one uniform font size across every segment;
+         * passing large=1 per segment makes trailing short rows jump to RV_FONT_LARGE. */
+        int large = active && st->line_row_count[row->line_idx] <= 1U;
         uint8_t color = active ? RV_CANVAS_ACCENT : RV_CANVAS_MUTED;
-        rv_canvas_text(&canvas, 0, y, width, LRC_LINE_HEIGHT, st->lines[i].text,
-                       active, RV_ALIGN_CENTER, color);
+        rv_canvas_text(&canvas, 10, y, width - 20, LRC_LINE_HEIGHT, seg,
+                       large, RV_ALIGN_CENTER, color);
     }
 }
 
@@ -314,8 +435,8 @@ static int input(const struct rv_context *ctx, const struct rv_input *in)
         return 0;
 
     if (in->kind == RV_INPUT_WHEEL) {
-        if (st->line_count > 0U && in->delta != 0) {
-            int32_t max_scroll = (int32_t)(st->line_count - 1U) * LRC_LINE_HEIGHT;
+        if (st->row_count > 0U && in->delta != 0) {
+            int32_t max_scroll = (int32_t)(st->row_count - 1U) * LRC_LINE_HEIGHT;
             int32_t next = st->target_scroll_offset_px + (int32_t)in->delta * LRC_LINE_HEIGHT;
             if (next < 0)
                 next = 0;

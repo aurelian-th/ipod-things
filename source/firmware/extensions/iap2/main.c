@@ -16,6 +16,7 @@
 #include "rv_ui.h"
 
 #define KEY_PROTOCOL_MODE 4
+#define KEY_DIAG_LOGGING  5
 #ifdef __arm__
 #include "artwork.h"
 #include "native_tx.h"
@@ -45,9 +46,16 @@ static struct rv_timer *media_timer;
 static struct iap2_media_state shared_media;
 static uint32_t shared_media_gen;
 static uint32_t session_media_gen;
+static uint32_t media_polled_session_gen;
 static uint32_t pending_actions_mask;
 static uint32_t pending_seek_target_ms;
 static uint8_t pending_seek_valid;
+
+static char *diag_file_buf;
+static uint32_t diag_last_hash;
+static uint8_t diag_flush_cooldown;
+static uint8_t diag_force_flush;
+static uint32_t last_ui_diag_sig;
 
 static uint8_t play_cmd_grace_ticks;
 static uint8_t last_ui_mode;
@@ -97,6 +105,7 @@ enum {
   PLAY_CMD_ITEMS = 1,
   PLAY_CMD_COLLECTION = 2,
   PLAY_CMD_SPECIAL = 3,
+  PLAY_CMD_CURRENT = 4,
 };
 
 #define LIB_BATCH_SIZE 32U
@@ -347,6 +356,8 @@ static void unprime_digital_audio(void) {
 }
 
 static void arm_apply_usb_audio_route(uint8_t enable) {
+  if (enable && media_player_ready() && GameAudio_IsPlaying())
+    play_cmd_grace_ticks = 15U;
   (void)AudioOutputDevice_Get();
   uint32_t payload[3] = {
       enable ? DigitalAudioEvent_Connected : DigitalAudioEvent_Disconnected,
@@ -370,6 +381,10 @@ static void sess_on_rx_payload(void *ctx, uint8_t sess_id,
 static void sess_on_rx_reset(void *ctx) {
   (void)ctx;
   iap2_session_reset(&ctrl_session);
+  iap2_session_mark_media_pending(&ctrl_session);
+  uint32_t irq = api->irq_save();
+  media_polled_session_gen = 0U;
+  api->irq_restore(irq);
 }
 
 static uint32_t sess_random32(void *ctx) {
@@ -496,6 +511,13 @@ static void sess_on_queue_keys_done(void *ctx, bool completed) {
   api->irq_restore(irq);
 }
 
+static void sess_on_play_library_current(void *ctx) {
+  (void)ctx;
+  uint32_t irq = api->irq_save();
+  pending_play_kind = PLAY_CMD_CURRENT;
+  api->irq_restore(irq);
+}
+
 static void sess_on_play_library_items(void *ctx, const uint64_t *ids,
                                        size_t count, uint32_t start_index) {
   (void)ctx;
@@ -584,7 +606,8 @@ static void usb_sync_and_pump(void *controller) {
 
   uint32_t irq = api->irq_save();
   if (!stopping) {
-    if (shared_media_gen != session_media_gen) {
+    if (shared_media_gen != session_media_gen &&
+        media_polled_session_gen == diag_state.session_gen) {
       snap = shared_media;
       session_media_gen = shared_media_gen;
       do_set = 1U;
@@ -659,9 +682,13 @@ static void usb_sync_and_pump(void *controller) {
       RV_FIELD(DigitalAudioState, DigitalAudioState_active_rate, uint32_t) =
           host_rate;
     if (ctrl_session.media.sample_rate != host_rate) {
-      struct iap2_media_state tmp = ctrl_session.media;
-      tmp.sample_rate = host_rate;
-      iap2_session_set_media(&ctrl_session, &tmp);
+      if (ctrl_session.media_synced) {
+        struct iap2_media_state tmp = ctrl_session.media;
+        tmp.sample_rate = host_rate;
+        iap2_session_set_media(&ctrl_session, &tmp);
+      } else {
+        ctrl_session.media.sample_rate = host_rate;
+      }
     }
   }
 
@@ -893,10 +920,12 @@ static uint32_t on_hid_activate(uint8_t *hid, uint32_t high_speed,
       api->irq_restore(irq);
     }
     iap2_session_reset(&ctrl_session);
+    iap2_session_mark_media_pending(&ctrl_session);
     if (iap2_native_tx_open(&native_tx, api, self, &rx_tap.link, hid)) {
       prime_digital_audio(DigitalAudio_DefaultRate);
       irq = api->irq_save();
       if (!stopping) {
+        media_polled_session_gen = 0U;
         diag_state.tx_active = 1U;
         diag_state.shared_session_summary = ctrl_session.summary;
       }
@@ -1117,6 +1146,55 @@ static const char *pane_status_caption(const struct rv_context *ctx) {
   struct iap2_diag_snapshot snap;
   read_ui_snapshot(&snap);
   return iap2_ui_status_caption(&snap);
+}
+
+static const char *pane_diag_caption(const struct rv_context *ctx) {
+  (void)ctx;
+  struct iap2_diag_snapshot snap;
+  read_ui_snapshot(&snap);
+  return iap2_ui_diag_caption(&snap);
+}
+
+static const char *row_diag_car(const struct rv_context *ctx) {
+  (void)ctx;
+  struct iap2_diag_snapshot snap;
+  read_ui_snapshot(&snap);
+  return iap2_ui_diag_line(&snap, 0U);
+}
+
+static const char *row_diag_link(const struct rv_context *ctx) {
+  (void)ctx;
+  struct iap2_diag_snapshot snap;
+  read_ui_snapshot(&snap);
+  return iap2_ui_diag_line(&snap, 1U);
+}
+
+static const char *row_diag_audio(const struct rv_context *ctx) {
+  (void)ctx;
+  struct iap2_diag_snapshot snap;
+  read_ui_snapshot(&snap);
+  return iap2_ui_diag_line(&snap, 2U);
+}
+
+static const char *row_diag_msgs(const struct rv_context *ctx) {
+  (void)ctx;
+  struct iap2_diag_snapshot snap;
+  read_ui_snapshot(&snap);
+  return iap2_ui_diag_line(&snap, 3U);
+}
+
+static const char *row_diag_play(const struct rv_context *ctx) {
+  (void)ctx;
+  struct iap2_diag_snapshot snap;
+  read_ui_snapshot(&snap);
+  return iap2_ui_diag_line(&snap, 4U);
+}
+
+static const char *row_diag_file(const struct rv_context *ctx) {
+  (void)ctx;
+  struct iap2_diag_snapshot snap;
+  read_ui_snapshot(&snap);
+  return iap2_ui_diag_line(&snap, 5U);
 }
 
 #ifdef __arm__
@@ -1439,6 +1517,22 @@ static void arm_dispatch_play_command(void) {
 
   (void)special_type;
 
+  if (kind == PLAY_CMD_CURRENT) {
+    void *player = media_player_ready() ? rv_player_lock() : NULL;
+    uint8_t has_cur = 0U;
+    if (player != NULL) {
+      has_cur =
+          (RV_FIELD(player, MediaPlayer_current_track, void *) != NULL) ? 1U
+                                                                        : 0U;
+      rv_player_unlock(player);
+    }
+    if (has_cur && !GameAudio_IsPlaying()) {
+      GameAudio_TogglePlayPause(0U);
+      play_cmd_grace_ticks = 15U;
+    }
+    return;
+  }
+
   void *owner = NULL;
   void *td = NULL;
   struct MediaList **lists = NULL;
@@ -1451,6 +1545,28 @@ static void arm_dispatch_play_command(void) {
     return;
   }
   (void)owner;
+
+  if (kind == PLAY_CMD_ITEMS && cmd_count == 1U && media_player_ready() &&
+      GameAudio_IsPlaying()) {
+    void *player = rv_player_lock();
+    uint8_t already = 0U;
+    if (player != NULL) {
+      _Alignas(4) uint8_t item_raw[MediaItem_bytes];
+      struct MediaItem *item = (struct MediaItem *)item_raw;
+      rv_player_current(player, item);
+      if (rv_item_valid(item)) {
+        void *rec = RV_FIELD(item, MediaItem_record, void *);
+        if (is_valid_media_record(rec, td) &&
+            read_record_persistent_id(rec) == ui_play_items[0]) {
+          already = 1U;
+        }
+      }
+      MediaItem_Destroy(item);
+      rv_player_unlock(player);
+    }
+    if (already)
+      return;
+  }
 
   size_t match_count = 0U;
   uint32_t target_idx = start_idx;
@@ -1555,6 +1671,7 @@ static void arm_dispatch_play_command(void) {
     return;
   }
 
+  int was_shuffle = (media_player_ready() && GameAudio_IsShuffleEnabled()) ? 1 : 0;
   uint32_t added = 0U;
   void *player = rv_player_lock();
   if (player != NULL) {
@@ -1606,6 +1723,9 @@ static void arm_dispatch_play_command(void) {
     }
     rv_player_unlock(player);
   }
+
+  if (added > 0U && was_shuffle && !GameAudio_IsShuffleEnabled())
+    GameAudio_SetPlaybackOrder(1U);
 
   if (added > 0U) {
     if (App != NULL)
@@ -1982,6 +2102,57 @@ static void arm_dispatch_remote(uint32_t actions, uint8_t has_seek,
     GameAudio_Seek(seek_ms);
 }
 
+static void arm_maybe_flush_diag(uint8_t force) {
+  struct iap2_diag_snapshot snap;
+  uint32_t irq = api->irq_save();
+  iap2_diag_snapshot(&diag_state, &snap);
+  api->irq_restore(irq);
+
+  if (!snap.diag_logging) {
+    if (diag_file_buf != NULL) {
+      if (RV_HAS(api, free) && api->free)
+        api->free(self, diag_file_buf);
+      diag_file_buf = NULL;
+    }
+    diag_last_hash = 0U;
+    diag_flush_cooldown = 0U;
+    return;
+  }
+
+  if (diag_flush_cooldown > 0U)
+    diag_flush_cooldown--;
+  if (!force && diag_flush_cooldown > 0U)
+    return;
+
+  if (!RV_HAS(api, file_open) || !api->file_open || !api->file_write ||
+      !api->file_close || !api->file_delete) {
+    return;
+  }
+
+  if (diag_file_buf == NULL && RV_HAS(api, alloc) && api->alloc)
+    diag_file_buf = api->alloc(self, 1024U);
+  if (diag_file_buf == NULL)
+    return;
+
+  size_t len = iap2_format_diag_report(&snap, diag_file_buf, 1024U);
+  uint32_t h = 2166136261U;
+  for (size_t i = 0U; i < len; i++)
+    h = (h ^ (uint8_t)diag_file_buf[i]) * 16777619U;
+  if (h == 0U)
+    h = 1U;
+  if (!force && h == diag_last_hash)
+    return;
+
+  (void)api->file_delete(self, "diag.txt");
+  struct rv_file *f = NULL;
+  if (api->file_open(self, "diag.txt", RV_FILE_WRITE, &f) == RV_OK && f != NULL) {
+    (void)api->file_write(self, f, diag_file_buf, (uint32_t)len);
+    api->file_close(self, f);
+    diag_last_hash = h;
+    diag_flush_cooldown = 40U;
+  }
+}
+
 static void on_media_timer(void *arg) {
   (void)arg;
   if (stopping)
@@ -2009,6 +2180,11 @@ static void on_media_timer(void *arg) {
   struct iap2_session_summary sum = diag_state.shared_session_summary;
   api->irq_restore(irq);
 
+  if (diag_force_flush) {
+    diag_force_flush = 0U;
+    arm_maybe_flush_diag(1U);
+  }
+
   if (want_route != usb_audio_route_applied) {
     arm_apply_usb_audio_route(want_route);
     irq = api->irq_save();
@@ -2035,6 +2211,7 @@ static void on_media_timer(void *arg) {
     if (!stopping) {
       shared_media = polled;
       shared_media_gen++;
+      media_polled_session_gen = cur_session_gen;
     }
     api->irq_restore(irq);
 
@@ -2139,12 +2316,26 @@ static void on_media_timer(void *arg) {
     }
   }
 
+  arm_maybe_flush_diag(0U);
+
   uint8_t audio_act = sum.audio_active ? 1U : 0U;
+  uint32_t diag_sig = sum.rx_messages ^ (sum.tx_messages << 8) ^
+                      ((uint32_t)sum.play_cmd_count << 16) ^
+                      ((uint32_t)sum.play_cmd_suppressed << 24) ^
+                      ((uint32_t)sum.phase);
   if (mode != last_ui_mode || usb_conn != last_ui_usb_conn ||
       tap_act != last_ui_tap_active || active != last_ui_tx_active ||
       replug != last_ui_replug || (uint8_t)sum.phase != last_ui_phase ||
       audio_act != last_ui_audio_active ||
-      sum.audio_rate != last_ui_audio_rate) {
+      sum.audio_rate != last_ui_audio_rate || diag_sig != last_ui_diag_sig) {
+    uint8_t main_changed =
+        (mode != last_ui_mode || usb_conn != last_ui_usb_conn ||
+         tap_act != last_ui_tap_active || active != last_ui_tx_active ||
+         replug != last_ui_replug || (uint8_t)sum.phase != last_ui_phase ||
+         audio_act != last_ui_audio_active ||
+         sum.audio_rate != last_ui_audio_rate)
+            ? 1U
+            : 0U;
     last_ui_mode = mode;
     last_ui_usb_conn = usb_conn;
     last_ui_tap_active = tap_act;
@@ -2153,10 +2344,15 @@ static void on_media_timer(void *arg) {
     last_ui_phase = (uint8_t)sum.phase;
     last_ui_audio_active = audio_act;
     last_ui_audio_rate = sum.audio_rate;
+    last_ui_diag_sig = diag_sig;
+    if (main_changed) {
+      if (RV_HAS(api, ui_refresh) && api->ui_refresh)
+        api->ui_refresh(self, "car_audio");
+      if (RV_HAS(api, pane_refresh) && api->pane_refresh)
+        api->pane_refresh(self);
+    }
     if (RV_HAS(api, ui_refresh) && api->ui_refresh)
-      api->ui_refresh(self, "car_audio");
-    if (RV_HAS(api, pane_refresh) && api->pane_refresh)
-      api->pane_refresh(self);
+      api->ui_refresh(self, "car_diag");
   }
 }
 
@@ -2282,6 +2478,8 @@ static void unbind_tx_hooks(void) {
 static const struct rv_row car_rows[] = {
     RV_ROW_SETTING("Protocol", KEY_PROTOCOL_MODE),
     RV_ROW_INFO("Status", row_car_status_text),
+    RV_ROW_SETTING("Diagnostics", KEY_DIAG_LOGGING),
+    RV_ROW_PUSH("View Diagnostics", "car_diag"),
     RV_ROW_PUSH("About Modes", "car_about"),
 };
 
@@ -2289,7 +2487,18 @@ static const struct rv_pane car_panes[] = {
     {.caption_text = pane_protocol_caption,
      .bitmap = RV_BITMAP("settings-car")},
     {.caption_text = pane_status_caption, .bitmap = RV_BITMAP("settings-car")},
+    {.caption_text = pane_diag_caption, .bitmap = RV_BITMAP("settings-car")},
+    {.caption = "USB and iAP2 state", .bitmap = RV_BITMAP("settings-car")},
     {.caption = "Older vs. newer", .bitmap = RV_BITMAP("settings-car")},
+};
+
+static const struct rv_row diag_rows[] = {
+    RV_ROW_INFO("Car", row_diag_car),
+    RV_ROW_INFO("Link", row_diag_link),
+    RV_ROW_INFO("Audio", row_diag_audio),
+    RV_ROW_INFO("Messages", row_diag_msgs),
+    RV_ROW_INFO("Play Guard", row_diag_play),
+    RV_ROW_INFO("Log File", row_diag_file),
 };
 
 static const char *const about_paragraphs[] = {
@@ -2305,6 +2514,7 @@ static const char *const about_paragraphs[] = {
 
 static const struct rv_screen screens[] = {
     RV_SCREEN_LIST_PANES("car_audio", "Car Audio", car_rows, car_panes),
+    RV_SCREEN_LIST("car_diag", "Diagnostics", diag_rows),
     RV_SCREEN_TEXT("car_about", "Car Audio", about_paragraphs),
 };
 
@@ -2316,6 +2526,7 @@ static const struct rv_menu_entry entries[] = {
 };
 
 static const char *const protocol_labels[] = {"iAP1", "iAP2"};
+static const char *const diag_labels[] = {"Off", "On"};
 static const struct rv_setting settings[] = {
     {
         .key = KEY_PROTOCOL_MODE,
@@ -2328,6 +2539,17 @@ static const struct rv_setting settings[] = {
         .labels = protocol_labels,
         .label_count = RV_COUNT(protocol_labels),
     },
+    {
+        .key = KEY_DIAG_LOGGING,
+        .type = RV_SETTING_TYPE_INT,
+        .style = RV_SETTING_STYLE_NONE,
+        .fallback = 0,
+        .minimum = 0,
+        .maximum = 1,
+        .label = "Car Audio Diagnostics",
+        .labels = diag_labels,
+        .label_count = RV_COUNT(diag_labels),
+    },
 };
 
 static const struct rv_hook hooks[] = {
@@ -2338,31 +2560,55 @@ static const struct rv_hook hooks[] = {
 };
 
 static void on_setting_changed(uint16_t key) {
-  if (key != KEY_PROTOCOL_MODE && key != RV_SETTING_KEY_ALL)
+  if (key != KEY_PROTOCOL_MODE && key != KEY_DIAG_LOGGING &&
+      key != RV_SETTING_KEY_ALL)
     return;
 
-  int mode = (api->setting_int(self, KEY_PROTOCOL_MODE) == IAP2_MODE_IAP1)
-                 ? IAP2_MODE_IAP1
-                 : IAP2_MODE_IAP2;
+  if (key == KEY_DIAG_LOGGING || key == RV_SETTING_KEY_ALL) {
+    uint8_t log_on = (api->setting_int(self, KEY_DIAG_LOGGING) != 0) ? 1U : 0U;
+    uint32_t irq = api->irq_save();
+    if (!stopping) {
+      diag_state.diag_logging = log_on;
 #ifdef __arm__
-  uint8_t bound_ok = 0U;
-  if (mode == IAP2_MODE_IAP2 && !stopping)
-    bound_ok = bind_tx_hooks();
+      if (log_on)
+        diag_force_flush = 1U;
+      else
+        diag_force_flush = 0U;
 #endif
-  uint32_t irq = api->irq_save();
-  if (!stopping) {
-    diag_state.protocol_mode = (uint8_t)mode;
-    diag_state.tap_desired = (mode == IAP2_MODE_IAP2) ? 1U : 0U;
+    }
+    api->irq_restore(irq);
 #ifdef __arm__
-    diag_state.tx_desired = (mode == IAP2_MODE_IAP2 && bound_ok) ? 1U : 0U;
-#else
-    diag_state.tx_desired = 0U;
+    arm_maybe_flush_diag(log_on);
+    diag_force_flush = 0U;
 #endif
   }
-  api->irq_restore(irq);
 
-  if (RV_HAS(api, ui_refresh) && api->ui_refresh)
+  if (key == KEY_PROTOCOL_MODE || key == RV_SETTING_KEY_ALL) {
+    int mode = (api->setting_int(self, KEY_PROTOCOL_MODE) == IAP2_MODE_IAP1)
+                   ? IAP2_MODE_IAP1
+                   : IAP2_MODE_IAP2;
+#ifdef __arm__
+    uint8_t bound_ok = 0U;
+    if (mode == IAP2_MODE_IAP2 && !stopping)
+      bound_ok = bind_tx_hooks();
+#endif
+    uint32_t irq = api->irq_save();
+    if (!stopping) {
+      diag_state.protocol_mode = (uint8_t)mode;
+      diag_state.tap_desired = (mode == IAP2_MODE_IAP2) ? 1U : 0U;
+#ifdef __arm__
+      diag_state.tx_desired = (mode == IAP2_MODE_IAP2 && bound_ok) ? 1U : 0U;
+#else
+      diag_state.tx_desired = 0U;
+#endif
+    }
+    api->irq_restore(irq);
+  }
+
+  if (RV_HAS(api, ui_refresh) && api->ui_refresh) {
     api->ui_refresh(self, "car_audio");
+    api->ui_refresh(self, "car_diag");
+  }
   if (RV_HAS(api, pane_refresh) && api->pane_refresh)
     api->pane_refresh(self);
 }
@@ -2424,6 +2670,11 @@ static void unload(void) {
       api->free(self, q_keys_buf);
     q_keys_buf = NULL;
   }
+  if (diag_file_buf != NULL) {
+    if (RV_HAS(api, free) && api->free)
+      api->free(self, diag_file_buf);
+    diag_file_buf = NULL;
+  }
 #endif
 }
 
@@ -2454,6 +2705,12 @@ const struct rv_descriptor *rv_module_entry(const struct rv_api *core,
   media_timer = NULL;
   shared_media_gen = 0U;
   session_media_gen = 0U;
+  media_polled_session_gen = 0U;
+  diag_file_buf = NULL;
+  diag_last_hash = 0U;
+  diag_flush_cooldown = 0U;
+  diag_force_flush = 0U;
+  last_ui_diag_sig = 0U;
   pending_actions_mask = 0U;
   pending_seek_target_ms = 0U;
   pending_seek_valid = 0U;
@@ -2538,6 +2795,7 @@ const struct rv_descriptor *rv_module_entry(const struct rv_api *core,
       .on_playlist_keys_request = sess_on_playlist_keys_request,
       .on_playlist_keys_done = sess_on_playlist_keys_done,
       .on_queue_keys_done = sess_on_queue_keys_done,
+      .on_play_library_current = sess_on_play_library_current,
       .on_play_library_items = sess_on_play_library_items,
       .on_play_library_collection = sess_on_play_library_collection,
       .on_play_library_special = sess_on_play_library_special,

@@ -59,7 +59,7 @@ pub(super) fn latest_manifest_url(target: &str) -> Result<String, String> {
     let mut releases = Vec::new();
     for page in 1.. {
         let response = client
-            .get("https://api.github.com/repos/lgreitis/osos-lab/releases")
+            .get("https://api.github.com/repos/RepriseOS/repriseos/releases")
             .header("Accept", "application/vnd.github+json")
             .query(&[("per_page", 100), ("page", page)])
             .send()

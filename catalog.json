@@ -25,9 +25,15 @@
     },
     {
       "id": "iap2",
-      "title": "Car Audio 1.0.0",
-      "summary": "USB iAP1/iAP2 switching with 44.1 kHz digital audio, artwork, and steering-wheel controls.",
-      "version": "1.0.0"
+      "title": "Car Audio 1.1.0",
+      "summary": "Added 6-second connect auto-play guard, resume-in-place 0x4C06 handling, shuffle preservation, and opt-in diagnostics logging.",
+      "version": "1.1.0"
+    },
+    {
+      "id": "lyrics",
+      "title": "Lyrics 0.3.0",
+      "summary": "Added embedded MP4 and ID3v2 SYLT/USLT lyrics extraction plus automatic multi-line word wrapping.",
+      "version": "0.3.0"
     }
   ],
   "categories": [
@@ -357,17 +363,17 @@
       "id": "iap2",
       "name": "Car Audio",
       "type": "connectivity",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": "0xAu",
       "stability": "stable",
       "api": "1.74",
       "default_enabled": true,
       "requires_custom_core": true,
-      "description": "Switch USB car protocol between iAP1 and iAP2 with 44.1 kHz digital audio, artwork, library sync, and steering-wheel controls.",
-      "changelog": "Car Audio 1.0.0 built for RevisionOS API 1.74.",
+      "description": "Switch USB car protocol between iAP1 and iAP2 with 44.1 kHz digital audio, artwork, library sync, steering-wheel controls, connect play guard, and opt-in diagnostics logging.",
+      "changelog": "Car Audio 1.1.0 built for RevisionOS API 1.74.",
       "file": "Extensions/iap2.rvx",
-      "bytes": 46108,
-      "sha256": "f1e3779f7802e8875adbb59a2ea00ecb6606981de8a814759a9c4a823d205b30",
+      "bytes": 50640,
+      "sha256": "cea089ac87f8ba47c1e02b7ae6b6d8e71d6a93cb47007d9138563ce1e7ca21a0",
       "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/iap2.rvx"
     },
     {
@@ -391,17 +397,17 @@
       "id": "lyrics",
       "name": "Lyrics",
       "type": "media",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "author": "0xAu",
       "stability": "beta",
       "api": "1.73",
       "default_enabled": true,
       "requires_custom_core": true,
-      "description": "Synced and unsynced .lrc lyrics viewer in Song and Now Playing context menus with Click Wheel scrub and snap-back.",
-      "changelog": "Lyrics 0.2.0 built for RevisionOS API 1.73.",
+      "description": "Embedded (MP4 and ID3v2 SYLT/USLT) and synced .lrc lyrics viewer with word wrap in Song and Now Playing context menus.",
+      "changelog": "Lyrics 0.3.0 built for RevisionOS API 1.73.",
       "file": "Extensions/lyrics.rvx",
-      "bytes": 4932,
-      "sha256": "4ecd25c8289135895484da8bc244783a9d5d2d14d675a72c1405df198a5388f2",
+      "bytes": 9152,
+      "sha256": "b108120156e306b5d88178a2ac6e92fb54bde87396fa785e3f1ee0da4231f366",
       "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/lyrics.rvx"
     },
     {

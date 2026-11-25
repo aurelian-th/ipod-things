@@ -27,6 +27,7 @@ def main():
                 str(ext_dir),
                 str(root / "lrc.c"),
                 str(ext_dir / "lrc.c"),
+                str(ext_dir / "embedded.c"),
                 "-o",
                 str(exe),
             ],
