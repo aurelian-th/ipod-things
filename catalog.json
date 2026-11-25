@@ -7,9 +7,9 @@
   "whats_new": [
     {
       "id": "hold-standby-clock",
-      "title": "Hold Standby Clock 1.0.0",
-      "summary": "Jump straight to Apple's standby clock when engaging Hold while keeping your Backlight Timer intact.",
-      "version": "1.0.0"
+      "title": "Hold Standby Clock 1.0.1",
+      "summary": "Jump straight to Apple's standby clock when engaging Hold while keeping Backlight Timer, Hold unlock during playback, and USB Disk Mode clean.",
+      "version": "1.0.1"
     },
     {
       "id": "silent-remote-volume",
@@ -312,17 +312,17 @@
       "id": "hold-standby-clock",
       "name": "Hold Standby Clock",
       "type": "customization",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": "0xAu",
       "stability": "beta",
       "api": "1.74",
       "default_enabled": false,
       "requires_custom_core": true,
       "description": "Jumps straight to Apple's standby clock when Hold is locked while keeping the Backlight Timer; requires RevisionOS revola.bin.",
-      "changelog": "Hold Standby Clock 1.0.0 built for RevisionOS API 1.74.",
+      "changelog": "Hold Standby Clock 1.0.1 built for RevisionOS API 1.74.",
       "file": "Extensions/hold-standby-clock.rvx",
-      "bytes": 716,
-      "sha256": "6637c06b481d07c6bb50c7fb5e326a5dc2af22a6e05253575d4249e6ea031fd8",
+      "bytes": 904,
+      "sha256": "cd6450353d11eac93b7e6e0576258b30a3ff05a449a941cfcc0b0f328e6beff3",
       "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/hold-standby-clock.rvx"
     },
     {

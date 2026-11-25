@@ -1,7 +1,7 @@
 id = "hold-standby-clock"
 name = "Hold Standby Clock"
 description = "Jump immediately to Apple's standby clock when engaging Hold."
-version = "1.0.0"
+version = "1.0.1"
 author = "0xAu"
 license = "GPL-3.0-only"
 api = "1.74"
