@@ -128,8 +128,8 @@
       "description": "Dark Mode, Accent Color and themes that recolour the screens and replace the artwork.",
       "changelog": "Verified resident stock artwork CRC before applying theme rules and kept restore slots armed on read errors so Dark Mode placeholder art never re-applies cracks.",
       "file": "Extensions/appearance.rvx",
-      "bytes": 125108,
-      "sha256": "7067ef5e31f6a8e19f8adac07f2ceea37c24001982df692b57b2fe3b3dfc79b6",
+      "bytes": 125216,
+      "sha256": "45ed302cb0f1f659f10771f19236b6af8511b2c0a4f645242d7db328151fb6c1",
       "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/appearance.rvx",
       "versions": [
         {
@@ -138,9 +138,19 @@
           "changelog": "Verified resident stock artwork CRC before applying theme rules and kept restore slots armed on read errors so Dark Mode placeholder art never re-applies cracks.",
           "api": "1.47",
           "file": "Extensions/appearance.rvx",
+          "bytes": 125216,
+          "sha256": "45ed302cb0f1f659f10771f19236b6af8511b2c0a4f645242d7db328151fb6c1",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/appearance.rvx"
+        },
+        {
+          "version": "0.1.1",
+          "date": "2026-11-25",
+          "changelog": "Fixed inverted top-to-bottom custom Accent Color selection bar gradients via a dedicated highlight pointer hook.",
+          "api": "1.47",
+          "file": "Archive/Extensions/appearance/appearance-0.1.1.rvx",
           "bytes": 125108,
           "sha256": "7067ef5e31f6a8e19f8adac07f2ceea37c24001982df692b57b2fe3b3dfc79b6",
-          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/appearance.rvx"
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Archive/Extensions/appearance/appearance-0.1.1.rvx"
         },
         {
           "version": "0.1.0",
@@ -570,7 +580,7 @@
       "type": "connectivity",
       "version": "0.1.0",
       "author": "0xAu",
-      "note": "Adapted from RevolaOS and RepriseOS",
+      "note": "",
       "stability": "beta",
       "api": "1.29",
       "default_enabled": true,
@@ -578,8 +588,8 @@
       "description": "Let accessories use authentication-gated iAP commands without an Apple authentication chip.",
       "changelog": "Bypasses Apple accessory authentication signature checks for legacy accessories.",
       "file": "Extensions/iap-auth-bypass.rvx",
-      "bytes": 420,
-      "sha256": "bb73f7133125f70569300f9f34900afe6c9682df6cabedc70eeda2f1371c567d",
+      "bytes": 384,
+      "sha256": "7e1ec66823550a9c14babd6d55af4216bddf9608a0bad55d2b94d03740cf4fd7",
       "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/iap-auth-bypass.rvx",
       "versions": [
         {
@@ -588,8 +598,8 @@
           "changelog": "Bypasses Apple accessory authentication signature checks for legacy accessories.",
           "api": "1.29",
           "file": "Extensions/iap-auth-bypass.rvx",
-          "bytes": 420,
-          "sha256": "bb73f7133125f70569300f9f34900afe6c9682df6cabedc70eeda2f1371c567d",
+          "bytes": 384,
+          "sha256": "7e1ec66823550a9c14babd6d55af4216bddf9608a0bad55d2b94d03740cf4fd7",
           "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/iap-auth-bypass.rvx"
         }
       ]
@@ -608,8 +618,8 @@
       "description": "Switch USB car protocol between iAP1 and iAP2 with 44.1 kHz digital audio, artwork, library sync, steering-wheel controls, connect play guard, and opt-in diagnostics logging. Tested and working on VAG MIB3 (\u0160koda Kodiaq); testing in progress on Stellantis UConnect, Honda, Alpine, Suzuki (Jimny 2026), and Mercedes-Benz (GLC 300 2019).",
       "changelog": "Handled iAP2 vendor EP0 0x53 reads, accepted short or unpadded HID Output reports and wValue low byte 0x00, logged vendor requests and LastBad HID diagnostics, and updated stereo compatibility notes.",
       "file": "Extensions/iap2.rvx",
-      "bytes": 50640,
-      "sha256": "cea089ac87f8ba47c1e02b7ae6b6d8e71d6a93cb47007d9138563ce1e7ca21a0",
+      "bytes": 52244,
+      "sha256": "0a6eab74545e9007c6be4fd799d95bd58b0f4c2a7ea926db139fc5d29a1f287b",
       "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/iap2.rvx",
       "versions": [
         {
@@ -618,9 +628,19 @@
           "changelog": "Handled iAP2 vendor EP0 0x53 reads, accepted short or unpadded HID Output reports and wValue low byte 0x00, logged vendor requests and LastBad HID diagnostics, and updated stereo compatibility notes.",
           "api": "1.74",
           "file": "Extensions/iap2.rvx",
+          "bytes": 52244,
+          "sha256": "0a6eab74545e9007c6be4fd799d95bd58b0f4c2a7ea926db139fc5d29a1f287b",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/iap2.rvx"
+        },
+        {
+          "version": "1.1.0",
+          "date": "2026-11-25",
+          "changelog": "Added 6-second connect auto-play guard, resume-in-place 0x4C06 handling, shuffle preservation, and opt-in diagnostics logging.",
+          "api": "1.74",
+          "file": "Archive/Extensions/iap2/iap2-1.1.0.rvx",
           "bytes": 50640,
           "sha256": "cea089ac87f8ba47c1e02b7ae6b6d8e71d6a93cb47007d9138563ce1e7ca21a0",
-          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/iap2.rvx"
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Archive/Extensions/iap2/iap2-1.1.0.rvx"
         },
         {
           "version": "1.0.0",
@@ -670,7 +690,7 @@
       "type": "media",
       "version": "0.3.1",
       "author": "0xAu",
-      "note": "Adapted from RevolaOS and RepriseOS",
+      "note": "",
       "stability": "beta",
       "api": "1.73",
       "default_enabled": true,
@@ -678,8 +698,8 @@
       "description": "Embedded (MP4 and ID3v2 SYLT/USLT) and synced .lrc lyrics viewer with international UTF-8/CP1252 diacritics, runtime glyph caching, word wrap, and live Synced/Unsynced title status.",
       "changelog": "Fixed UTF-8/CP1252 diacritics decoding, stripped BOMs, normalized NFD accents, warmed Apple's runtime glyph cache across Latin/Cyrillic/CJK scripts, and added a live Synced/Unsynced title indicator.",
       "file": "Extensions/lyrics.rvx",
-      "bytes": 9188,
-      "sha256": "1cf79c60f5aee303e9ccce0ebf9367630782753c03028930e92567b104a59ec6",
+      "bytes": 11340,
+      "sha256": "eeb55e37cf983ca6945010506fa9539504bec8451513f39e30667b16314b39d3",
       "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/lyrics.rvx",
       "versions": [
         {
@@ -688,9 +708,19 @@
           "changelog": "Fixed UTF-8/CP1252 diacritics decoding, stripped BOMs, normalized NFD accents, warmed Apple's runtime glyph cache across Latin/Cyrillic/CJK scripts, and added a live Synced/Unsynced title indicator.",
           "api": "1.73",
           "file": "Extensions/lyrics.rvx",
+          "bytes": 11340,
+          "sha256": "eeb55e37cf983ca6945010506fa9539504bec8451513f39e30667b16314b39d3",
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/lyrics.rvx"
+        },
+        {
+          "version": "0.3.0",
+          "date": "2026-11-25",
+          "changelog": "Added embedded MP4 and ID3v2 SYLT/USLT lyrics extraction plus automatic multi-line word wrapping.",
+          "api": "1.73",
+          "file": "Archive/Extensions/lyrics/lyrics-0.3.0.rvx",
           "bytes": 9188,
           "sha256": "1cf79c60f5aee303e9ccce0ebf9367630782753c03028930e92567b104a59ec6",
-          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Extensions/lyrics.rvx"
+          "url": "https://raw.githubusercontent.com/aurelian-th/ipod-things/main/Archive/Extensions/lyrics/lyrics-0.3.0.rvx"
         },
         {
           "version": "0.2.0",
