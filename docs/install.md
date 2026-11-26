@@ -11,6 +11,12 @@ RevisionOS runs on the iPod Classic 6G, 6.5G, and 7G with FAT32 storage and Appl
 
 RevisionOS currently uses the `/Revola/` folder layout on the iPod FAT32 volume (`/Revola/Firmware/revola.bin`, `/Revola/Extensions/`, `/Revola/Games/`, `/Revola/Apps/`, `/Revola/Themes/`) so existing bootloaders and `.rvx` extensions remain drop-in compatible.
 
+## Hardware limitations
+
+The 2007 iPod Classic 6th Generation (80 GB and thick 160 GB) logic board physically lacks the Mikey accessory controller chip introduced on the 2008 6.5G (120 GB) and 2009 7G (thin 160 GB). That chip powers headset microphones and reads resistance and ultrasonic signals from wired inline headphone remotes.
+
+Flashing Apple firmware 2.0.2 to 2.0.5 or RevisionOS onto a 6G will not enable inline headphone controls or microphone input, and replacing the 3.5 mm headphone jack cannot add them because the hardware is missing from the motherboard (sources: Olsro iPod Modding Guide on GitHub and Retro Refresh).
+
 ---
 
 ## Option 1: Fresh install with RevisionOS Installer (recommended)

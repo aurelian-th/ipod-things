@@ -27,10 +27,11 @@ RevisionOS builds on the modular **RevolaOS** extension architecture and **Repri
 
 ## What is included
 
-- Car Audio (`iap2.rvx` v1.0.0) adds a wired USB `iAP1 / iAP2` switch under **Settings > Car Audio** with 44.1 kHz UAC1 digital audio, library sync, album artwork up to 512 KiB, and steering-wheel controls. Tested end-to-end on a 2023 Škoda Kodiaq MIB3. Because it follows standard wired USB iAP2 media, it should work on most cars with wired iAP2 iPhone or iPod support; if your head unit does not connect cleanly, open an issue to get setup instructions and the `iap2-diagnostics` build to capture logs.
-- Synced `.lrc` lyrics (`lyrics.rvx` v0.2.0) adds a time-synced and static lyrics viewer to Song and Now Playing context menus with smooth auto-scrolling, Click Wheel scrub and snap-back, and Light/Dark Mode support.
+- Car Audio (`iap2.rvx` v1.1.0) adds a wired USB `iAP1 / iAP2` switch under **Settings > Car Audio** with 44.1 kHz UAC1 digital audio, library sync, album artwork up to 512 KiB, steering-wheel controls, connect auto-play guard, and opt-in diagnostics logging. Tested end-to-end on a 2023 Škoda Kodiaq MIB3. Because it follows standard wired USB iAP2 media, it should work on most cars with wired iAP2 iPhone or iPod support; if your head unit does not connect cleanly, open an issue to get setup instructions and enable diagnostics logging.
+- Synced and embedded lyrics (`lyrics.rvx` v0.3.0) adds an embedded MP4/ID3v2 (`SYLT`/`USLT`) and `.lrc` lyrics viewer to Song and Now Playing context menus with smooth auto-scrolling, multi-line word wrapping, Click Wheel scrub and snap-back, and Light/Dark Mode support.
 - Twenty-two modular `.rvx` extensions covering Dark Mode and `.rvt` themes (`appearance.rvx`), Hold Standby Clock, Silent Remote Volume, Playback Queue, Equalizer, Crossfeed, Compressor, Channels, Clicker Modes, Chapter Menu, File Info, Fast Seek, Long Audio Fix, and Homebrew app/game loading.
 - Prebuilt `.eapp` games and apps ready to copy straight onto the iPod under `/Revola/Games/` and `/Revola/Apps/`.
+- Previous package builds archived under `Archive/` for one-click downgrades and version history in RevisionOS Installer.
 
 ## Repository contents
 
@@ -40,6 +41,7 @@ RevisionOS builds on the modular **RevolaOS** extension architecture and **Repri
 | [`Extensions/`](Extensions/) | 22 precompiled `.rvx` modules ready to copy to `/Revola/Extensions/` | [Extensions guide](docs/extensions.md) |
 | [`Games/`](Games/) | Prebuilt `.eapp` games (`doodlejump/`, `2048/`) and game credits | [Games README](Games/README.md) |
 | [`Apps/`](Apps/) | Prebuilt `.eapp` apps (`dice/`) and app credits | [Apps README](Apps/README.md) |
+| [`Archive/`](Archive/) | Previous versions of extensions and games indexed in `catalog.json` | [Catalog](catalog.json) |
 | [`Themes/`](Themes/) | Instructions for custom `.rvt` themes | [Themes README](Themes/README.md) |
 | [`source/`](source/) | Complete GPL-3.0 corresponding source for firmware, extensions, games, host tools, and installer | [Source build guide](source/README.md) |
 | [`docs/`](docs/) | Guides for installation, extensions, Car Audio, lyrics, and recovery | [Recovery guide](docs/recovery.md) |
